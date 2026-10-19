@@ -72,6 +72,11 @@
   57. `useMemo` and `useCallback` for a context value
   58. Signal vs data: refetch after a save instead of patching
   59. A type-safe generic setter: `K extends keyof T`, `T[K]`, `NonNullable`
+- [Forms and dialog accessibility](#forms-and-dialog-accessibility)
+  60. Controlled vs uncontrolled components (lifting state up)
+  61. Accessible client-side validation
+  62. `useId` and `form.requestSubmit()`
+  63. Modal dialog focus: move in, trap, return
 
 ---
 
@@ -1491,6 +1496,168 @@ const editing = draft !== undefined;
 
 **Interview Q:** *Why not `part: string` and `values: any`?* It would compile, but typos and wrong shapes would only fail at runtime. With `K extends DraftPart` and `CandidateDraft[K]`, both mistakes are compile errors, and the editor autocompletes `"general"` and `"progress"`.
 
+## Forms and dialog accessibility
+
+### 60. Controlled vs uncontrolled components (lifting state up)
+
+- **Uncontrolled:** the component keeps its own state; the parent only sets the starting value.
+- **Controlled:** the parent owns the state and passes it down with an `onChange`; the component only displays it and reports changes.
+
+`CandidateForm` started uncontrolled and became controlled, so its values could outlive the component:
+
+```tsx
+// Before: uncontrolled. The values die with the form.
+function CandidateForm({ initialValues, ... }) {
+  const [values, setValues] = useState(initialValues);
+}
+
+// After: controlled. The parent decides where the values live.
+function CandidateForm({ values, onChange, ... }) {
+  const setField = (name: FieldName, value: string) => {
+    onChange({ ...values, [name]: value });
+  };
+}
+```
+
+```tsx
+// components/candidate-detail/general-information-card.tsx
+// The values live in a context (a draft), so they survive switching
+// between the drawer and the full page, which render different cards
+const draft = drafts[candidate.id]?.general;
+const editing = draft !== undefined; // derived: a draft means the form is open
+
+<CandidateForm
+  values={draft}
+  onChange={(values) => setDraft(candidate.id, "general", values)}
+  ...
+/>
+```
+
+Moving state from a child to its parent (or higher, into context) is called **lifting state up**. The form still keeps purely local state itself: its validation `errors`.
+
+**Interview Q:** *Controlled vs uncontrolled: when to use which?* Controlled when the parent needs the value: to validate as you type, keep it after the component unmounts, sync it with other UI, or reset it. Uncontrolled (including native inputs read on submit, e.g. with `FormData`) is simpler when only the final value matters.
+
+**Interview Q:** *What is "lifting state up"?* Moving state to the closest common parent of the components that need it, then passing it down as props. Here it went one step further, into context, because the two views are on different routes.
+
+### 61. Accessible client-side validation
+
+Validate before sending, show a message next to each bad field, and make it work for screen readers and keyboards.
+
+```ts
+// lib/utils/candidate-form.ts: a pure function, easy to test
+export function validateCandidateForm(values: CandidateFormValues): CandidateFormErrors {
+  const errors: CandidateFormErrors = {};
+  if (!values.full_name.trim()) errors.full_name = "Enter the candidate's full name.";
+  // ... email pattern, years between 0 and MAX_EXPERIENCE_YEARS, http(s) URLs
+  return errors; // {} = valid
+}
+```
+
+```tsx
+// components/candidate-form/candidate-form.tsx
+<form noValidate onSubmit={...}>      {/* our messages replace the browser's bubbles */}
+
+<input
+  aria-invalid={error ? true : undefined}        // announced as "invalid"
+  aria-describedby={error ? errorId : undefined} // reads the message with the field
+/>
+{error && <p id={errorId}>{error}</p>}
+```
+
+```ts
+// On a failed submit, send nothing and move focus to the first field to fix
+const firstInvalid = FIELDS.find((field) => found[field.name]);
+if (firstInvalid) {
+  document.getElementById(inputId(firstInvalid.name))?.focus();
+  return;
+}
+onSubmit(values);
+```
+
+- **Client validation is for the user, not for security.** The API must validate too; the client can be bypassed.
+- **Some rules are your own.** The API accepts any number for years, so the 0–60 limit (`MAX_EXPERIENCE_YEARS`) is a business rule, and a comment says so.
+- Editing a field clears only that field's message.
+
+**Interview Q:** *If the server validates, why validate on the client?* Faster feedback, fewer wasted requests, and messages next to the right field. The server is still the source of truth.
+
+**Interview Q:** *How do you make form errors accessible?* Link each message to its input with `aria-describedby`, mark the input `aria-invalid`, don't rely on color alone, and move focus to the first invalid field on submit.
+
+### 62. `useId` and `form.requestSubmit()`
+
+`useId()` creates an ID that's unique per component instance and stable between server and client renders. Use it whenever an element needs an `id`, since the same component can be on screen twice:
+
+```tsx
+// candidate-form.tsx: each label points at its own input
+const idPrefix = useId();
+const inputId = (name: FieldName) => `${idPrefix}-${name}`;
+<label htmlFor={inputId("email")}>Email</label>
+<input id={inputId("email")} />
+```
+
+```tsx
+// general-information-card.tsx: Retry submits the form from outside it
+const formId = useId();
+
+const retry = () => {
+  const form = document.getElementById(formId);
+  if (form instanceof HTMLFormElement) form.requestSubmit();
+};
+
+<CandidateForm id={formId} ... />
+<ErrorState ... onRetry={retry} />
+```
+
+`requestSubmit()` behaves like clicking the submit button: it fires the `submit` event, so `onSubmit` runs (validation, the "nothing changed" check, the PUT). `form.submit()` skips the event and does a full-page form post.
+
+**Interview Q:** *Why `useId` instead of `Math.random()` or a counter?* Random IDs differ between the server render and hydration (a mismatch), and a module counter breaks with concurrent rendering. `useId` is stable and unique per instance.
+
+**Interview Q:** *`form.submit()` vs `form.requestSubmit()`?* `submit()` sends the form directly, without the `submit` event or built-in validation. `requestSubmit()` acts like a real submit click, so your `onSubmit` handler runs.
+
+### 63. Modal dialog focus: move in, trap, return
+
+A modal must manage keyboard focus, or keyboard users end up behind it. Three parts:
+
+```tsx
+// components/candidate-detail/candidate-drawer.tsx
+<aside ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={TITLE_ID}
+  tabIndex={-1}> {/* focusable from code, but not a Tab stop */}
+```
+
+```ts
+// 1. Move in on open, 3. return on close
+useEffect(() => {
+  if (!isOpen) return;
+  const previous = document.activeElement; // the row link that opened it
+  dialogRef.current?.focus();
+  return () => {
+    if (previous instanceof HTMLElement) previous.focus();
+  };
+}, [isOpen]);
+```
+
+```ts
+// 2. Trap: Tab past the last control wraps to the first, and back
+function trapTab(event: KeyboardEvent, root: HTMLElement) {
+  const focusable = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE))
+    .filter((element) => element.getClientRects().length > 0); // visible only
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+```
+
+The focusable elements are looked up **on every Tab**, because the content changes (Edit swaps text for inputs). Escape closes, and the page behind doesn't scroll (`overflow: hidden` on `body`).
+
+**Interview Q:** *What does an accessible modal need?* `role="dialog"`, `aria-modal="true"`, an accessible name (`aria-labelledby`), focus moved in on open, focus trapped inside, Escape to close, and focus returned to the trigger on close.
+
+**Interview Q:** *Other ways to trap focus?* The native `<dialog>` element with `showModal()` traps focus and handles Escape for you. The `inert` attribute on everything outside the modal makes it unfocusable. Libraries such as `focus-trap` also exist. A hand-written trap is fine when the layout makes those awkward.
+
 ---
 
-<!-- Keep adding new concepts below as the project grows (notes API, forms, PATCH/PUT, focus trap, etc.). -->
+<!-- Keep adding new concepts below as the project grows (notes API, create form, etc.). -->
