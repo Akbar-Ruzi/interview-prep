@@ -67,6 +67,10 @@
   54. Save feedback: saving, success, error
 - [Forms and validation](#forms-and-validation)
   55. `keyof`, `Record`, and `Partial` together: a typed errors object
+- [Sharing state across components](#sharing-state-across-components)
+  56. The Context API (`createContext`, provider, `useContext`)
+  57. `useMemo` and `useCallback` for a context value
+  58. Signal vs data: refetch after a save instead of patching
 
 ---
 
@@ -1267,6 +1271,159 @@ Because the keys come from `CandidateFormValues` via `keyof`, adding a field to 
 **Interview Q:** *`Partial<Record<K, V>>` vs `Record<K, V>`?* `Record` requires every key; `Partial<Record>` allows any subset. Use `Record` when every key must exist (like `STATUS_LABELS`, a label for every status); use `Partial<Record>` when only some keys are present (like errors, only for invalid fields).
 
 **Interview Q:** *How would you write `Partial` yourself?* It's a mapped type: `type MyPartial<T> = { [K in keyof T]?: T[K] }`. It loops over each key of `T` (`K in keyof T`), adds `?`, and keeps the original value type (`T[K]`, an indexed access type). `Record<K, V>` is similar: `{ [P in K]: V }`.
+
+---
+
+## Sharing state across components
+
+### 56. The Context API (`createContext`, provider, `useContext`)
+
+Context shares a value with every component inside a provider, without passing props through each level ("prop drilling"). Use it when components that need the same value are far apart in the tree, or not parent and child at all.
+
+Here, the list and the drawer are **siblings**, and the full page is a **different route**, so no prop can carry "a candidate was saved" from one to the other:
+
+```
+app/layout.tsx
+└── CandidateUpdatesProvider        ← holds saveCount
+    ├── /                 → CandidateList (reads) + CandidateDrawer (saves)
+    └── /candidates/[id]  → CandidateFullPage (saves)
+```
+
+Three parts: create the context, provide a value, read it.
+
+```tsx
+// context/candidate-updates.tsx
+"use client"; // context and useState only work in Client Components
+
+type CandidateUpdates = {
+  saveCount: number;                // goes up by one after every save
+  notifyCandidateSaved: () => void; // call after a successful save
+};
+
+// 1. Create. Default null = "no provider above this component"
+const CandidateUpdatesContext = createContext<CandidateUpdates | null>(null);
+
+// 2. Provide: owns the state, wraps the part of the tree that can read it
+export function CandidateUpdatesProvider({ children }: { children: ReactNode }) {
+  const [saveCount, setSaveCount] = useState(0);
+  const notifyCandidateSaved = useCallback(() => {
+    setSaveCount((count) => count + 1);
+  }, []);
+  const value = useMemo(
+    () => ({ saveCount, notifyCandidateSaved }),
+    [saveCount, notifyCandidateSaved],
+  );
+  // React 19: <Context value> (older React: <Context.Provider value>)
+  return <CandidateUpdatesContext value={value}>{children}</CandidateUpdatesContext>;
+}
+
+// 3. Read: a custom hook that fails loudly if the provider is missing
+export function useCandidateUpdates(): CandidateUpdates {
+  const context = useContext(CandidateUpdatesContext);
+  if (!context) {
+    throw new Error("useCandidateUpdates must be used inside CandidateUpdatesProvider.");
+  }
+  return context; // narrowed from CandidateUpdates | null to CandidateUpdates
+}
+```
+
+```tsx
+// app/layout.tsx: a Server Component can render a Client Component provider
+<body>
+  <CandidateUpdatesProvider>{children}</CandidateUpdatesProvider>
+</body>
+```
+
+```ts
+// hooks/useCandidateDetail.ts: the writer
+const { notifyCandidateSaved } = useCandidateUpdates();
+// after a successful PATCH/PUT:
+notifyCandidateSaved();
+
+// components/candidate-list/candidate-list.tsx: the reader
+const { saveCount } = useCandidateUpdates();
+```
+
+**Interview Q:** *When would you use context instead of props?* When many components, or distant ones, need the same value: theme, the signed-in user, locale, or a cross-page signal like this one. For a value one or two levels down, props are simpler and clearer.
+
+**Interview Q:** *Why wrap `useContext` in a custom hook?* One import for callers, a clear error if the provider is missing (instead of a confusing `null` bug), and `null` is removed from the type, so callers don't need checks.
+
+**Interview Q:** *Can you use context in a Next.js Server Component?* No. Context needs client-side React. Make the provider a Client Component (`"use client"`) that takes `children`, and render it from the Server Component layout. The pages passed in as `children` can still be Server Components.
+
+**Interview Q:** *Context vs a state library (Redux, Zustand)?* Context is built in and fine for values that change rarely. Every component that reads a context re-renders when its value changes, so large, frequently changing state is better in a store with selectors, where a component only re-renders for the slice it uses.
+
+### 57. `useMemo` and `useCallback` for a context value
+
+- `useMemo(() => value, deps)` keeps the same **value** between renders until a dependency changes.
+- `useCallback(fn, deps)` keeps the same **function** between renders (see #25). It is `useMemo(() => fn, deps)` written shorter.
+
+This matters for a context because React compares its value with `Object.is`. A new object, even with the same contents, makes **every** component that reads the context re-render.
+
+```tsx
+// Without useMemo: a brand-new object on every provider render,
+// so every reader re-renders each time, even when nothing changed
+<CandidateUpdatesContext value={{ saveCount, notifyCandidateSaved }}>
+
+// With useMemo: the same object until saveCount actually changes
+const value = useMemo(
+  () => ({ saveCount, notifyCandidateSaved }),
+  [saveCount, notifyCandidateSaved],
+);
+```
+
+`useMemo` only helps if its dependencies are stable too. That's why `notifyCandidateSaved` uses `useCallback` with `[]`. The functional update (`count => count + 1`) means it never reads `saveCount`, so it never has to change:
+
+```tsx
+const notifyCandidateSaved = useCallback(() => {
+  setSaveCount((count) => count + 1); // always adds to the latest value
+}, []);
+```
+
+| | `useMemo` | `useCallback` |
+|---|---|---|
+| Returns | The result of calling the function | The function itself |
+| Use for | An object/array passed to a context, a prop, or a dependency array; an expensive calculation | A function passed to a context, a prop, or a dependency array |
+| Here | The context `value` object | `notifyCandidateSaved` |
+
+**Interview Q:** *Difference between `useMemo` and `useCallback`?* `useMemo` caches a value; `useCallback` caches a function. `useCallback(fn, deps)` is the same as `useMemo(() => fn, deps)`.
+
+**Interview Q:** *Why memoize a context value?* Readers re-render whenever the value is a new reference. An inline `{...}` object is new on every render, so every reader would re-render even when nothing changed.
+
+**Interview Q:** *Should you always use `useMemo`?* No. It has a cost and makes code harder to read. Use it when the **reference** matters (context values, props of memoized children, effect dependencies) or the calculation is genuinely slow. The React Compiler can add this memoization automatically.
+
+### 58. Signal vs data: refetch after a save instead of patching
+
+After a save, there are two ways to update another list:
+
+| | Patch local state | Refetch (used here) |
+|---|---|---|
+| How | Swap the saved candidate into the list's array | Tell the list "something changed"; it asks the API again |
+| Requests | None | One per loaded page |
+| Filters | A candidate that no longer matches stays until the next reload | The API applies the filters, so it drops out |
+| Source of truth | Each list's copy | The server |
+
+This project sends a **signal**, not data. The context only holds a counter; each list fetches fresh data itself:
+
+```ts
+// hooks/useCandidateTable.ts (desktop): saveCount is an effect dependency
+// but not part of requestKey, so the old rows stay until new ones arrive (no skeleton)
+}, [reloadKey, page, status, stage, search, saveCount]);
+```
+
+```ts
+// hooks/useCandidateFeed.ts (mobile): reload every page already shown,
+// in parallel, so the extra pages and the scroll position are kept
+const pages = await Promise.all(
+  Array.from({ length: lastPage }, (_, index) =>
+    getRecords({ page: index + 1, limit: PAGE_SIZE, status, stage, search }),
+  ),
+);
+setCandidates(pages.flatMap((response) => response.data));
+```
+
+**Interview Q:** *After a mutation, refetch or update the cache manually?* Refetching is simpler and always correct, especially with server-side filters, sorting, or pagination; it costs extra requests. Manual cache updates are instant and cheaper, but you must re-apply every rule the server would. Libraries like TanStack Query offer both: `invalidateQueries` (refetch) and `setQueryData` (manual update).
+
+**Interview Q:** *Why put a counter in context instead of the saved candidate?* The list doesn't need the candidate; it needs to know its data is out of date. A counter that changes on every save is the simplest value to put in an effect's dependency array.
 
 ---
 
