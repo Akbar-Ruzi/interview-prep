@@ -1055,12 +1055,14 @@ Benefits:
 
 All three use `setTimeout`, and the code can look almost the same. The difference is **what starts the timer and what it's for.**
 
-**Auto-dismiss** is a one-shot timer. Something happens once, and the timer undoes it later. Here, a success message hides itself after 4 seconds:
+**Auto-dismiss** is a one-shot timer. Something happens once, and the timer undoes it later. Here, a success message hides itself after 3 seconds:
 
 ```ts
-// components/candidate-detail/recruitment-progress-card.tsx
 // lib/constants.ts
-export const SUCCESS_MESSAGE_MS = 4000;
+export const SUCCESS_MESSAGE_MS = 3000;
+
+// components/candidate-detail/recruitment-progress-card.tsx
+// (the same code is in general-information-card.tsx)
 const [saved, setSaved] = useState(false);
 
 // Hide "Saved" after a few seconds
@@ -1071,11 +1073,20 @@ useEffect(() => {
 }, [saved]);
 
 // after a successful PATCH:
-setSaved(true);   // shows the banner → the effect starts the 4 s timer
+setSaved(true);   // shows the banner → the effect starts the 3 s timer
 ```
 
 ```tsx
 {saved && <SuccessMessage message="Recruitment progress saved." />}
+```
+
+```tsx
+// general-information-card.tsx: after a successful PUT the form closes,
+// so the message shows in view mode, under the updated details
+<>
+  <CandidateDetails candidate={candidate} layout={layout} />
+  {saved && <SuccessMessage message="General information saved." />}
+</>
 ```
 
 **Debounce** waits until a stream of events stops, then runs once. Each new event cancels the previous timer. Here, a search request is sent only after typing pauses (see #27):
@@ -1093,7 +1104,7 @@ useEffect(() => {
 | Triggered by | One event (a save succeeded) | Many rapid events (keystrokes) | Many rapid events (scroll, resize) |
 | Runs | Once, a fixed time after the event | Once, after the events **stop** | At most once per interval, **while** the events continue |
 | `clearTimeout` is for | Cleanup if the component unmounts or `saved` changes | Cancelling the previous event's timer (the core of debounce) | Not needed; a "last run" time is checked instead |
-| Example here | "Recruitment progress saved." disappears after 4 s | Search waits 300 ms after the last keystroke | (not used) |
+| Example here | "Recruitment progress saved." disappears after 3 s | Search waits 300 ms after the last keystroke | (not used) |
 
 The cleanup line, `return () => clearTimeout(timer)`, is the same in both effects. In the debounce it **is** the logic: every keystroke re-runs the effect, so the previous timer is cancelled. In auto-dismiss it's only a safety net.
 
@@ -1119,9 +1130,21 @@ The cleanup runs in two situations:
 
 The `if (!saved) return;` line means no timer is started when there's nothing to hide.
 
+Both cards also reset `saved` when Edit is opened, which triggers the cleanup above:
+
+```ts
+const startEditing = () => {
+  setError(null);
+  setSaved(false); // no old "saved" message next to the open form
+  setEditing(true);
+};
+```
+
 **Interview Q:** *What happens if you don't clear a timer?* It still fires later. It may update state the user has already moved past (hiding a newer message too early), or try to update an unmounted component. With `setInterval`, the leak repeats forever. Modern React no longer warns about updates after unmount, but the bug in your logic remains.
 
 **Interview Q:** *Why not call `setTimeout` straight after `setSaved(true)` in the save function?* It would work, but nothing would cancel it on unmount, and you'd have to manage the timer ID yourself (for example in a ref). Putting it in an effect that depends on `saved` ties the timer's lifetime to the state it controls.
+
+**Interview Q:** *The same `saved` state + timer effect is now in two components. What would you do?* Extract a custom hook (see #18), e.g. `useAutoDismiss(ms)` returning `[visible, show, hide]`. Each component keeps its own state (hooks share logic, not state), and the timer and cleanup are written once. A common rule of thumb is to extract on the second or third copy, not before.
 
 ### 54. Save feedback: saving, success, error
 
@@ -1165,7 +1188,7 @@ const save = async () => {
 | State | What the user sees | Why |
 |---|---|---|
 | Saving | Disabled controls, "Saving…" | No double submits; shows something is happening |
-| Success | Green banner, which hides after 4 s; badges update | Confirms the change; no reload needed |
+| Success | Green banner, which hides after 3 s; badges update | Confirms the change; no reload needed |
 | Error | `ErrorState` with Retry; the user's choices are kept | The user can retry without re-entering anything |
 
 Using the **server's response** (`updated`) instead of the local draft means the UI shows exactly what was saved, including server-set fields like `updated_at`.
