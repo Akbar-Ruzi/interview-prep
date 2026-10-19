@@ -71,6 +71,7 @@
   56. The Context API (`createContext`, provider, `useContext`)
   57. `useMemo` and `useCallback` for a context value
   58. Signal vs data: refetch after a save instead of patching
+  59. A type-safe generic setter: `K extends keyof T`, `T[K]`, `NonNullable`
 
 ---
 
@@ -1424,6 +1425,71 @@ setCandidates(pages.flatMap((response) => response.data));
 **Interview Q:** *After a mutation, refetch or update the cache manually?* Refetching is simpler and always correct, especially with server-side filters, sorting, or pagination; it costs extra requests. Manual cache updates are instant and cheaper, but you must re-apply every rule the server would. Libraries like TanStack Query offer both: `invalidateQueries` (refetch) and `setQueryData` (manual update).
 
 **Interview Q:** *Why put a counter in context instead of the saved candidate?* The list doesn't need the candidate; it needs to know its data is out of date. A counter that changes on every save is the simplest value to put in an effect's dependency array.
+
+### 59. A type-safe generic setter: `K extends keyof T`, `T[K]`, `NonNullable`
+
+One `setDraft` function updates either part of a candidate's draft, and TypeScript checks that the values match the part you name. Several type features work together:
+
+```ts
+// context/candidate-drafts.tsx
+export type CandidateDraft = {
+  general?: CandidateFormValues;                   // General information form
+  progress?: Pick<Candidate, "status" | "stage">;  // Recruitment progress form
+};
+type DraftPart = keyof CandidateDraft; // "general" | "progress"
+
+type CandidateDrafts = {
+  drafts: Record<string, CandidateDraft>;
+  setDraft: <K extends DraftPart>(
+    id: string,
+    part: K,
+    values: NonNullable<CandidateDraft[K]>,
+  ) => void;
+  clearDraft: (id: string, part: DraftPart) => void;
+};
+```
+
+| Feature | In the code | What it does |
+|---|---|---|
+| Optional properties (`?`) | `general?:`, `progress?:` | A candidate can have one draft, both, or none. The type of `general` becomes `CandidateFormValues \| undefined`. |
+| `Pick<T, K>` | `Pick<Candidate, "status" \| "stage">` | Reuses the two fields from `Candidate` (see #2), so the draft can't drift from the real type |
+| `keyof` | `keyof CandidateDraft` | The union of the keys: `"general" \| "progress"` (see #55) |
+| `Record<K, V>` | `Record<string, CandidateDraft>` | An object used as a map: candidate ID → draft |
+| Generic function type | `<K extends DraftPart>(...) => void` | `setDraft` gets its own type parameter `K` each time it's called |
+| Generic constraint (`extends`) | `K extends DraftPart` | `K` can only be `"general"` or `"progress"`, not any string |
+| Indexed access type | `CandidateDraft[K]` | "The type of property `K`": `CandidateDraft["progress"]` is `{ status, stage } \| undefined` |
+| `NonNullable<T>` | `NonNullable<CandidateDraft[K]>` | Removes `null` and `undefined`, so you must pass real values, not `undefined` |
+
+**How `K` links the arguments:** TypeScript infers `K` from the `part` you pass, then uses the same `K` to decide what `values` must be.
+
+```ts
+// recruitment-progress-card.tsx
+setDraft(candidate.id, "progress", { status: "selected", stage: "review" }); // ✅ K = "progress"
+
+// general-information-card.tsx
+setDraft(candidate.id, "general", toCandidateFormValues(candidate));          // ✅ K = "general"
+
+setDraft(candidate.id, "progress", toCandidateFormValues(candidate)); // ❌ form values aren't { status, stage }
+setDraft(candidate.id, "notes", {});                                  // ❌ "notes" isn't a DraftPart
+setDraft(candidate.id, "progress", undefined);                        // ❌ blocked by NonNullable
+```
+
+Without the generic, the best you could write is `part: DraftPart, values: CandidateDraft[DraftPart]`. That type is "either kind of values", so `setDraft(id, "progress", formValues)` would compile even though it's wrong. The generic ties `values` to the **specific** `part` given.
+
+Reading a draft uses optional chaining (see #10), because both the candidate's entry and the part may be missing:
+
+```ts
+const draft = drafts[candidate.id]?.progress; // { status, stage } | undefined
+const editing = draft !== undefined;
+```
+
+**Interview Q:** *What does `K extends keyof T` mean in a generic?* `K` is a type parameter limited to the keys of `T`. Inside the function you can then use `T[K]` safely, and callers can only pass real keys. It's the standard pattern for typed getters and setters, like `function get<T, K extends keyof T>(obj: T, key: K): T[K]`.
+
+**Interview Q:** *What is an indexed access type?* `T[K]` looks up the type of property `K` in `T`, just like `obj[key]` looks up a value. With a union of keys it gives a union of types: `Candidate["status" | "stage"]` is `CandidateStatus | CandidateStage`.
+
+**Interview Q:** *What does `NonNullable<T>` do?* It removes `null` and `undefined` from `T`. Here the draft parts are optional (`T | undefined`), but when you set one you must pass an actual value. Built in, it's `T & {}`.
+
+**Interview Q:** *Why not `part: string` and `values: any`?* It would compile, but typos and wrong shapes would only fail at runtime. With `K extends DraftPart` and `CandidateDraft[K]`, both mistakes are compile errors, and the editor autocompletes `"general"` and `"progress"`.
 
 ---
 
