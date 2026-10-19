@@ -55,6 +55,18 @@
   44. `cacheComponents` and `<Activity>`
   45. Metadata API and `next/font`
   46. Environment variables (`NEXT_PUBLIC_`)
+- [Promises and API calls](#promises-and-api-calls)
+  47. Promises and `Promise<T>`
+  48. An `async` function always returns a Promise
+  49. Generic syntax: `<T>`, not `(T)`
+  50. HTTP methods: GET, POST, PUT, PATCH, DELETE
+  51. A typed API layer (one function per endpoint)
+- [Timers and save feedback](#timers-and-save-feedback)
+  52. Timers in effects: auto-dismiss vs debounce vs throttle
+  53. Effect cleanup for timers
+  54. Save feedback: saving, success, error
+- [Forms and validation](#forms-and-validation)
+  55. `keyof`, `Record`, and `Partial` together: a typed errors object
 
 ---
 
@@ -271,8 +283,8 @@ type ApiFetchOptions = RequestInit & {
   allowEmpty?: boolean;
 };
 
-// hooks/useCandidatePage.ts
-type CandidatePageOptions = ListFilters & {
+// hooks/useCandidateTable.ts
+type CandidateTableOptions = ListFilters & {
   page: number;
   onPageOutOfRange: (page: number) => void;
 };
@@ -342,7 +354,7 @@ if (loadingMoreRef.current || ended || candidates.length >= total) return;
 - `finally` runs whether the request succeeds or fails, which makes it the right place to turn off loading.
 
 ```ts
-// hooks/useCandidatePage.ts
+// hooks/useCandidateTable.ts
 async function load() {
   try {
     const response = await getRecords({ page, limit: PAGE_SIZE, status, stage, search });
@@ -426,7 +438,7 @@ A function whose name starts with `use` and that calls other hooks. It lets you 
 | Hook | What it does |
 |---|---|
 | `useRecordsFilters` | Status, stage, and page in the URL; debounced search |
-| `useCandidatePage` | Fetches one table page; loading/error/retry; out-of-range page |
+| `useCandidateTable` | Fetches one table page; loading/error/retry; out-of-range page |
 | `useCandidateFeed` | Mobile infinite scroll; keeps the scroll position |
 | `useCandidateDrawerHref` | Builds a drawer link that keeps the list query |
 
@@ -440,7 +452,7 @@ export function useCandidateDrawerHref() {
 
 ```tsx
 // components/candidate-list/candidate-list.tsx: components stay simple
-const table = useCandidatePage({ ...filters, page, onPageOutOfRange: setPage });
+const table = useCandidateTable({ ...filters, page, onPageOutOfRange: setPage });
 const { loadMoreAreaRef, ...feed } = useCandidateFeed(filters);
 ```
 
@@ -492,7 +504,7 @@ useEffect(() => {
 If the user changes the filters quickly, an older, slower response can arrive last and overwrite the newer one. The cleanup marks old requests as ignored.
 
 ```ts
-// hooks/useCandidatePage.ts
+// hooks/useCandidateTable.ts
 useEffect(() => {
   let ignore = false;               // only the latest request updates the table
   async function load() {
@@ -551,7 +563,7 @@ This is the React docs' "You Might Not Need an Effect" pattern. Another option i
 If a value can be calculated from props or state, don't store it in state. Storing it creates two sources of truth that can disagree.
 
 ```ts
-// hooks/useCandidatePage.ts
+// hooks/useCandidateTable.ts
 const isOutOfRange =
   !loading && !error && result !== null &&
   result.total > 0 && result.data.length === 0 && page > 1;
@@ -878,6 +890,360 @@ if (!base) {
 ```
 
 `.env.local` is git-ignored. `.env.example` documents the variable.
+
+---
+
+## Promises and API calls
+
+### 47. Promises and `Promise<T>`
+
+A Promise is an object for a value that isn't ready yet, such as a network response. It is always in one of three states:
+
+| State | Meaning | How you handle it |
+|---|---|---|
+| **pending** | Still waiting | Show loading |
+| **fulfilled** | Finished with a value | `await` / `.then(value => …)` |
+| **rejected** | Failed with an error | `try`/`catch` / `.catch(err => …)` |
+
+Once a Promise is fulfilled or rejected, it is **settled** and never changes again.
+
+`Promise<T>` is the TypeScript type: "a Promise that will fulfill with a `T`."
+
+```ts
+// lib/api/records.ts
+export async function getRecord(id: string): Promise<Candidate> {
+  const data = await apiFetch<unknown>(`/records/${encodeURIComponent(id)}`);
+  if (!isCandidate(data)) {
+    throw new Error("The candidate details came back in an unexpected format.");
+  }
+  return data; // fulfills the Promise with a Candidate
+}
+```
+
+```ts
+// The caller gets the Candidate itself after await, not the Promise
+const candidate = await getRecord("12");   // candidate: Candidate
+candidate.full_name;
+```
+
+Combining several Promises:
+
+| Helper | Fulfills when | Rejects when |
+|---|---|---|
+| `Promise.all([a, b])` | all fulfill, giving an array of values | **any one** rejects (fail fast) |
+| `Promise.allSettled([a, b])` | all settle, giving a status for each | never |
+| `Promise.race([a, b])` | the first one settles, with its result | the first one settles, with its error |
+| `Promise.any([a, b])` | the first one fulfills | all reject |
+
+```tsx
+// app/candidates/[id]/page.tsx: wait for params and searchParams in parallel
+Promise.all([props.params, props.searchParams]).then(([{ id }, searchParams]) => /* ... */);
+```
+
+Step 6 will use `Promise.all` to load a record and its notes at the same time.
+
+**Interview Q:** *Why `Promise.all` instead of two `await`s in a row?* Two `await`s run one after the other, so the total time is A + B. `Promise.all` runs them in parallel, so the total time is roughly the longer of the two. Use sequential `await`s only when B needs A's result.
+
+**Interview Q:** *`Promise.all` vs `Promise.allSettled`?* `all` fails as soon as one Promise fails. `allSettled` waits for every one and reports each result. Use it when partial success is fine, for example showing the record even if the notes failed to load.
+
+### 48. An `async` function always returns a Promise
+
+- Whatever you `return` inside an `async` function is wrapped in a Promise automatically.
+- Whatever you `throw` turns into a **rejected** Promise.
+- That's why the return type of `getRecord` is `Promise<Candidate>`, even though the code returns a plain `Candidate`.
+
+```ts
+async function getRecord(id: string): Promise<Candidate> {
+  // ...
+  throw new Error("...");   // the caller's `await` throws → caught by try/catch
+  return data;              // the caller's `await` gets a Candidate
+}
+```
+
+`await` pauses only the function it's in, not the whole page. Other code and rendering keep running.
+
+**Interview Q:** *What does `async function f() { return 1 }` return?* `Promise<number>`, not `1`.
+
+**Interview Q:** *What happens if you forget `await`?* You get the Promise itself, not the value. `data.full_name` is then `undefined`, and the `isCandidate` check would fail, because a Promise isn't a candidate. Errors also escape your `try`/`catch`, since nothing waits for the Promise to reject.
+
+### 49. Generic syntax: `<T>`, not `(T)`
+
+Type parameters always go in **angle brackets**. Parentheses are for values: function calls and parameters.
+
+```ts
+Promise<Candidate>             // ✅ a type with a type parameter
+Promise(Candidate)             // ❌ looks like calling a function → syntax error
+
+apiFetch<unknown>("/records")  // <type arguments> then (value arguments)
+useState<string | null>(null)
+```
+
+A real mistake from this project: `getRecord(id: string): Promise(Candiate)` gave `error TS1144: '{' or ';' expected` and `TS1005: '=>' expected`. TypeScript read `Promise(` as a function call, so the error message didn't mention generics at all. A misspelled type (`Candiate`) also fails, with "Cannot find name".
+
+**Interview Q:** *Read this type: `Promise<Record<string, Candidate[]>>`.* A Promise that fulfills with an object whose keys are strings and whose values are arrays of candidates. Read it from the outside in.
+
+### 50. HTTP methods: GET, POST, PUT, PATCH, DELETE
+
+The REST endpoints in this project:
+
+| Method | Endpoint | Purpose | Body | Safe | Idempotent |
+|---|---|---|---|---|---|
+| GET | `/records`, `/records/:id` | Read | No | Yes | Yes |
+| POST | `/records`, `/records/:id/notes` | Create | Yes | No | **No** |
+| PUT | `/records/:id` | **Replace** the whole resource | Full object | No | Yes |
+| PATCH | `/records/:id` | **Change some** fields | Only the changed fields | No | Usually |
+| DELETE | `/records/:id/notes/:note_id` | Remove | Usually none | No | Yes |
+
+- **Safe:** it doesn't change anything on the server.
+- **Idempotent:** sending the same request twice has the same effect as sending it once. Two identical POSTs create two candidates. Two identical PUTs leave the same result.
+
+```ts
+// GET: the default method, so no options are needed
+apiFetch<unknown>(`/records/${encodeURIComponent(id)}`);
+
+// PATCH: only the fields that changed
+apiFetch<unknown>(`/records/${encodeURIComponent(id)}`, {
+  method: "PATCH",
+  body: JSON.stringify(payload),        // e.g. { "status": "selected" }
+});
+```
+
+```ts
+// types/candidate.ts: the payload types match the method
+type UpdateCandidateStatusPayload = Partial<Pick<Candidate, "status" | "stage">>; // PATCH
+type UpdateCandidatePayload = Omit<Candidate, "id" | "status" | /* ... */>;      // PUT
+```
+
+**Interview Q:** *PUT vs PATCH?* PUT sends the complete replacement, and any field you leave out may be cleared. PATCH sends only what changes. This project uses PATCH for the status/stage dropdowns and PUT for the full Edit form.
+
+**Interview Q:** *Why does idempotency matter?* Requests can be retried safely after a timeout only if they're idempotent. A retried POST can create duplicates, which is one reason forms disable the Save button while saving.
+
+**Interview Q:** *Why `JSON.stringify(payload)`?* `fetch` sends the body as text. The object must be serialized, and the `Content-Type: application/json` header tells the server how to read it. `apiFetch` adds that header automatically when there's a body.
+
+### 51. A typed API layer (one function per endpoint)
+
+Components never call `fetch` directly. Each endpoint gets one small function. They all go through one shared helper and return a checked, typed result.
+
+```text
+component  →  getRecord(id)        lib/api/records.ts          one function per endpoint
+           →  apiFetch(path, opts) lib/api/api-fetch.ts        URL, headers, HTTP + JSON errors
+           →  isCandidate(data)    lib/api/validators/         runtime shape check
+```
+
+```ts
+// lib/api/records.ts: every endpoint function has the same shape
+export async function getRecord(id: string): Promise<Candidate> {
+  const data = await apiFetch<unknown>(`/records/${encodeURIComponent(id)}`); // 1. request
+  if (!isCandidate(data)) throw new Error("...");                             // 2. validate
+  return data;                                                                // 3. typed result
+}
+```
+
+Benefits:
+- **One place to change:** a new base URL, auth header, or error format changes `apiFetch` only.
+- **Components stay simple:** they work with `Candidate`, not URLs or JSON.
+- **Testable:** you can mock `getRecord` without touching the network.
+- **Consistent errors:** network failures, HTTP errors, invalid JSON and wrong shapes all become an `Error` with a readable message, which `ErrorState` displays.
+
+**Interview Q:** *Why not call `fetch` inside components?* It duplicates URL building, headers and error handling. It mixes data access with UI, and it leaves response types unchecked. Libraries like TanStack Query sit on top of a layer like this, adding caching, retries and request deduplication.
+
+---
+
+## Timers and save feedback
+
+### 52. Timers in effects: auto-dismiss vs debounce vs throttle
+
+All three use `setTimeout`, and the code can look almost the same. The difference is **what starts the timer and what it's for.**
+
+**Auto-dismiss** is a one-shot timer. Something happens once, and the timer undoes it later. Here, a success message hides itself after 4 seconds:
+
+```ts
+// components/candidate-detail/recruitment-progress-card.tsx
+// lib/constants.ts
+export const SUCCESS_MESSAGE_MS = 4000;
+const [saved, setSaved] = useState(false);
+
+// Hide "Saved" after a few seconds
+useEffect(() => {
+  if (!saved) return;                                  // nothing showing: no timer
+  const timer = setTimeout(() => setSaved(false), SUCCESS_MESSAGE_MS);
+  return () => clearTimeout(timer);                    // cleanup (see #53)
+}, [saved]);
+
+// after a successful PATCH:
+setSaved(true);   // shows the banner → the effect starts the 4 s timer
+```
+
+```tsx
+{saved && <SuccessMessage message="Recruitment progress saved." />}
+```
+
+**Debounce** waits until a stream of events stops, then runs once. Each new event cancels the previous timer. Here, a search request is sent only after typing pauses (see #27):
+
+```ts
+// hooks/useRecordsFilters.ts
+useEffect(() => {
+  const timer = setTimeout(() => setSearchQuery(search.trim()), SEARCH_DELAY_MS);
+  return () => clearTimeout(timer);   // the next keystroke cancels this timer
+}, [search]);
+```
+
+| | Auto-dismiss | Debounce | Throttle |
+|---|---|---|---|
+| Triggered by | One event (a save succeeded) | Many rapid events (keystrokes) | Many rapid events (scroll, resize) |
+| Runs | Once, a fixed time after the event | Once, after the events **stop** | At most once per interval, **while** the events continue |
+| `clearTimeout` is for | Cleanup if the component unmounts or `saved` changes | Cancelling the previous event's timer (the core of debounce) | Not needed; a "last run" time is checked instead |
+| Example here | "Recruitment progress saved." disappears after 4 s | Search waits 300 ms after the last keystroke | (not used) |
+
+The cleanup line, `return () => clearTimeout(timer)`, is the same in both effects. In the debounce it **is** the logic: every keystroke re-runs the effect, so the previous timer is cancelled. In auto-dismiss it's only a safety net.
+
+**Interview Q:** *Is this auto-hide effect a debounce?* No. A debounce collapses many events into one call after they stop. This effect reacts to one state change and schedules one follow-up. The shape is similar (`setTimeout` + `clearTimeout` in an effect), but the purpose is different.
+
+**Interview Q:** *Debounce vs throttle for a search box?* Debounce: you want one request after the user stops typing. Throttle fits continuous events where you want regular updates, such as scroll position or resize.
+
+### 53. Effect cleanup for timers
+
+If a timer can outlive the component, always clear it in the effect's cleanup.
+
+```ts
+useEffect(() => {
+  if (!saved) return;
+  const timer = setTimeout(() => setSaved(false), SUCCESS_MESSAGE_MS);
+  return () => clearTimeout(timer);
+}, [saved]);
+```
+
+The cleanup runs in two situations:
+1. **Before the effect runs again,** when `saved` changes. If `saved` goes back to `false` first (for example, the user clicks Edit), the old timer is cancelled, so it can't hide a later message too early.
+2. **When the component unmounts,** for example when the drawer closes or another candidate opens. The timer is cancelled, so nothing tries to update a component that's gone.
+
+The `if (!saved) return;` line means no timer is started when there's nothing to hide.
+
+**Interview Q:** *What happens if you don't clear a timer?* It still fires later. It may update state the user has already moved past (hiding a newer message too early), or try to update an unmounted component. With `setInterval`, the leak repeats forever. Modern React no longer warns about updates after unmount, but the bug in your logic remains.
+
+**Interview Q:** *Why not call `setTimeout` straight after `setSaved(true)` in the save function?* It would work, but nothing would cancel it on unmount, and you'd have to manage the timer ID yourself (for example in a ref). Putting it in an effect that depends on `saved` ties the timer's lifetime to the state it controls.
+
+### 54. Save feedback: saving, success, error
+
+Every save needs three kinds of feedback, plus protection against sending it twice.
+
+```ts
+// components/candidate-detail/recruitment-progress-card.tsx
+const save = async () => {
+  const payload: UpdateCandidateStatusPayload = {};
+  if (status !== candidate.status) payload.status = status;  // only what changed
+  if (stage !== candidate.stage) payload.stage = stage;
+  if (Object.keys(payload).length === 0) {
+    setEditing(false);                                       // nothing changed: no request
+    return;
+  }
+
+  setSaving(true);                    // 1. saving: disables the form
+  setError(null);
+  try {
+    const updated = await updateRecordStatus({ id: candidate.id, payload });
+    onSaved(updated);                 // show the server's version everywhere
+    setEditing(false);
+    setSaved(true);                   // 2. success: green banner, auto-hides
+  } catch (err) {
+    setError(err instanceof Error ? err.message : "Could not save the changes.");
+                                      // 3. error: stay in edit mode, keep the user's choices
+  } finally {
+    setSaving(false);
+  }
+};
+```
+
+```tsx
+<fieldset disabled={saving}>...</fieldset>          {/* disables every control inside */}
+<button type="submit" disabled={saving}>
+  {saving ? "Saving…" : "Save"}
+</button>
+{error && <ErrorState message={error} onRetry={save} />}
+```
+
+| State | What the user sees | Why |
+|---|---|---|
+| Saving | Disabled controls, "Saving…" | No double submits; shows something is happening |
+| Success | Green banner, which hides after 4 s; badges update | Confirms the change; no reload needed |
+| Error | `ErrorState` with Retry; the user's choices are kept | The user can retry without re-entering anything |
+
+Using the **server's response** (`updated`) instead of the local draft means the UI shows exactly what was saved, including server-set fields like `updated_at`.
+
+**Interview Q:** *Optimistic vs pessimistic updates?* **Pessimistic** (used here): wait for the server, then update the UI. It's simple and always accurate, but it feels slower. **Optimistic**: update the UI immediately, then roll back if the request fails. It feels instant, but needs rollback logic. Use optimistic updates for frequent, low-risk actions (likes); use pessimistic updates for important decisions (hiring status).
+
+**Interview Q:** *How do you prevent a form from being submitted twice?* Disable the submit button and inputs while saving (`<fieldset disabled>`). For extra safety, check a "busy" ref at the start of the handler (see #22), since a ref updates immediately.
+
+---
+
+## Forms and validation
+
+### 55. `keyof`, `Record`, and `Partial` together: a typed errors object
+
+Three type tools, combined to describe "at most one error message per form field":
+
+```ts
+// types/candidate.ts
+export type CandidateFormValues = {
+  full_name: string;
+  email: string;
+  phone: string;
+  position: string;
+  linkedin_url: string;
+  cv_url: string;
+  experience_years: string;
+};
+
+// One message per invalid field; a field with no entry is valid
+export type CandidateFormErrors = Partial<
+  Record<keyof CandidateFormValues, string>
+>;
+```
+
+Read it from the inside out:
+
+| Step | Type | Result |
+|---|---|---|
+| 1. `keyof` | `keyof CandidateFormValues` | The union of its key names: `"full_name" \| "email" \| "phone" \| ...` |
+| 2. `Record` | `Record<that union, string>` | An object with **every** one of those keys, each holding a `string` |
+| 3. `Partial` | `Partial<that object>` | The same keys, but **all optional** (`full_name?: string`, ...) |
+
+- **`keyof T`** turns an object type into a union of its keys. It is a type-level operator, not a utility type, and is often saved as its own alias:
+
+  ```ts
+  // components/candidate-form/candidate-form.tsx
+  type FieldName = keyof CandidateFormValues;
+  const inputId = (name: FieldName) => `${idPrefix}-${name}`;
+  ```
+
+  Passing `"emial"` is now a compile error.
+- **`Record<K, V>`** builds an object type from a set of keys and one value type (see #2).
+- **`Partial<T>`** makes every key optional (see #2). Without it, the validator would have to return a message for every field, even valid ones.
+
+Why this shape fits validation: a missing key means "valid", so `{}` means the whole form is fine, and checking is a simple lookup.
+
+```ts
+// lib/utils/candidate-form.ts: start empty, add a key only for a bad field
+const errors: CandidateFormErrors = {};
+if (!values.full_name.trim()) {
+  errors.full_name = "Enter the candidate's full name.";
+}
+return errors;
+```
+
+```tsx
+// candidate-form.tsx: look a field up by name; undefined = no error
+const error = errors[field.name];
+{error && <p id={errorId}>{error}</p>}
+```
+
+Because the keys come from `CandidateFormValues` via `keyof`, adding a field to the form type adds it to the errors type automatically. A typo like `errors.fullname` is also a compile error.
+
+**Interview Q:** *What does `keyof` return?* A union of string literal types, one per property name. `keyof { a: string; b: number }` is `"a" | "b"`.
+
+**Interview Q:** *`Partial<Record<K, V>>` vs `Record<K, V>`?* `Record` requires every key; `Partial<Record>` allows any subset. Use `Record` when every key must exist (like `STATUS_LABELS`, a label for every status); use `Partial<Record>` when only some keys are present (like errors, only for invalid fields).
+
+**Interview Q:** *How would you write `Partial` yourself?* It's a mapped type: `type MyPartial<T> = { [K in keyof T]?: T[K] }`. It loops over each key of `T` (`K in keyof T`), adds `?`, and keeps the original value type (`T[K]`, an indexed access type). `Record<K, V>` is similar: `{ [P in K]: V }`.
 
 ---
 
