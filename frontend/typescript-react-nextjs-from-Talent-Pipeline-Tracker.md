@@ -80,6 +80,8 @@
 - [Async results and stale closures](#async-results-and-stale-closures)
   64. Stale closures after `await` and the "latest value" ref
   65. Update a ref in an effect, not during render
+- [Data hooks and mutations](#data-hooks-and-mutations)
+  66. The hook owns the data, the component owns the buttons (the `useMutation` idea)
 
 ---
 
@@ -1813,6 +1815,90 @@ Rule of thumb: read and write refs in **effects and event handlers**, never in t
 **Interview Q:** *Isn't there a tiny gap between the render and the effect where the ref is still old?* Yes, but nothing reads it then. `addNote` runs later, when a network request finishes. If code needed the new value before the browser paints, `useLayoutEffect` updates it earlier (synchronously after commit).
 
 **Interview Q:** *When is it okay to touch a ref during render?* Only for lazy initialization of the ref itself, e.g. `if (ref.current === null) ref.current = createExpensiveThing();`, which runs once and gives the same result every time.
+
+---
+
+## Data hooks and mutations
+
+### 66. The hook owns the data, the component owns the buttons (the `useMutation` idea)
+
+A **query** reads data (GET). A **mutation** changes it (POST, PUT, PATCH, DELETE). A clean way to split the work for both:
+
+| Layer | Owns | Notes example |
+|---|---|---|
+| API layer (`lib/api`) | One typed function per endpoint (#51) | `getNotes`, `createNote`, `deleteNote` |
+| **Data hook** | The server data, and every request that reads or changes it | `useCandidateNotes`: `notes`, `saveNote`, `removeNote` |
+| **Component** | The UI around one action: pending state, error message, success banner, focus | `NoteComposer` (`saving`), `NoteCard` (`deleting`) |
+
+**Before:** the component called the API, then told the hook to update its list. The component had to know about endpoints, and two functions were both called `removeNote` (one sent the request, one only changed state).
+
+**After:** the hook makes the request *and* updates the list. It **throws** on failure, so the caller can decide how to show the error:
+
+```ts
+// hooks/useCandidateNotes.ts: owns the data
+// DELETE /records/:id/notes/:note_id, then drop the note (-1 on the count).
+// The note leaves the list only after the server confirms; a failure throws
+// and the note stays.
+const removeNote = async (note: Note) => {
+  await deleteNote({ id: note.record_id, noteId: note.id });
+  if (note.record_id === currentIdRef.current) {
+    setNotes((current) => current.filter((n) => n.id !== note.id));
+  }
+};
+
+return { notes, loading, error, retry, saveNote, removeNote };
+```
+
+```tsx
+// components/candidate-detail/candidate-notes.tsx: owns the button
+const confirmDelete = async () => {
+  if (deleting) return; // already sending this DELETE
+  setDeleting(true);
+  setDeleteError(null);
+  try {
+    await onDeleteConfirm(); // → the hook's removeNote
+  } catch (err) {
+    setDeleteError(
+      err instanceof Error ? err.message : "Could not delete the note.",
+    );
+    setDeleting(false); // only on failure: on success this card is gone
+  }
+};
+```
+
+Why the pending/error state stays in the component, not the hook:
+- It belongs to **one button on screen**. In the hook it would need `deletingIds: Set<string>` and `errorsById` just to track buttons.
+- Two views (drawer and full page) each call the hook, so it is per-view UI anyway.
+
+Why the hook **throws** instead of storing the error: the hook doesn't know where the message should appear (inside a confirmation, under a text box, in a banner). Throwing hands that choice to the component.
+
+**Benefits:**
+- Components don't import `lib/api`: one place shows how the data is loaded *and* changed.
+- The list always updates the same way after a request, whichever component triggered it.
+- Swapping the hook for a library later (React Query, SWR) barely touches the components.
+
+The same idea in **React Query**:
+
+```tsx
+const queryClient = useQueryClient();
+const deleteMutation = useMutation({
+  mutationFn: (note: Note) => deleteNote({ id: note.record_id, noteId: note.id }),
+  onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes", id] }),
+});
+
+// Component: deleteMutation.mutate(note)
+// Pending/error come from the mutation: deleteMutation.isPending, deleteMutation.error
+```
+
+React Query adds caching, retries, and `invalidateQueries` (refetch every view that shows those notes, which also solves keeping the drawer and full page in sync).
+
+**Interview Q:** *Where should API calls live in a React app?* Not in presentational components. Put them in a typed API layer, and call them from data hooks (custom hooks or a library like React Query/SWR). Components call the hook's functions and own only UI state: pending, errors, success messages, focus.
+
+**Interview Q:** *Query vs mutation?* A query reads and can be cached, refetched, and shared. A mutation changes server data. After it succeeds, you either update the local data with the response (what this project does) or invalidate the query so it refetches.
+
+**Interview Q:** *Why does `saveNote` throw instead of setting an `error` state in the hook?* The hook's `error` is for loading the list. A failed save belongs to the composer that triggered it, so the caller catches it and keeps the user's text. Mixing both into one `error` would replace the whole list with an error for a single failed save.
+
+**Interview Q:** *Update local state with the response, or refetch after a mutation?* Using the response (like `setNotes([...current, note])`) is instant and saves a request. Refetching (#58) is simpler and always matches the server, especially when the change affects other data such as counts or sorting. React Query's `invalidateQueries` is the refetch approach.
 
 ---
 
