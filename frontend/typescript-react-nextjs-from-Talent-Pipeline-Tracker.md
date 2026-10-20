@@ -82,6 +82,7 @@
   65. Update a ref in an effect, not during render
 - [Data hooks and mutations](#data-hooks-and-mutations)
   66. The hook owns the data, the component owns the buttons (the `useMutation` idea)
+  67. One rule for the whole app: hooks own API calls and data, components own buttons and feedback
 
 ---
 
@@ -1899,6 +1900,47 @@ React Query adds caching, retries, and `invalidateQueries` (refetch every view t
 **Interview Q:** *Why does `saveNote` throw instead of setting an `error` state in the hook?* The hook's `error` is for loading the list. A failed save belongs to the composer that triggered it, so the caller catches it and keeps the user's text. Mixing both into one `error` would replace the whole list with an error for a single failed save.
 
 **Interview Q:** *Update local state with the response, or refetch after a mutation?* Using the response (like `setNotes([...current, note])`) is instant and saves a request. Refetching (#58) is simpler and always matches the server, especially when the change affects other data such as counts or sorting. React Query's `invalidateQueries` is the refetch approach.
+
+### 67. One rule for the whole app: hooks own API calls and data, components own buttons and feedback
+
+#66 shows the pattern on one feature. Its value comes from applying it **everywhere**, as an architecture rule anyone on the team can check:
+
+> **Hooks own API calls and data. Components own buttons and feedback.**
+
+| Belongs in a **data hook** | Belongs in a **component** |
+|---|---|
+| Calling `lib/api` functions | Rendering the data |
+| The server data (`candidate`, `notes`) and its `loading` / load `error` | Pending state for one action (`saving`, `deleting`) |
+| Updating that data after a write | The error message for that action, and where it appears |
+| Race guards (`ignore`, latest-id ref) | Success banners, focus moves, form drafts |
+| Throwing on failure | Catching, and deciding what the user sees |
+
+**Quick check (code review):** search for `from "@/lib/api` in `components/`. Every hit is a component doing a hook's job.
+
+Applying that check to this project:
+
+| Request | Lives in | Follows the rule? |
+|---|---|---|
+| GET `/records` | `useCandidateTable`, `useCandidateFeed` | ✅ |
+| GET `/records/:id` | `useCandidateDetail` | ✅ |
+| GET / POST / DELETE notes | `useCandidateNotes` | ✅ |
+| PATCH `/records/:id` (status/stage) | `RecruitmentProgressCard` | ❌ refactor: `updateStatus` in `useCandidateDetail` |
+| PUT `/records/:id` (general info) | `GeneralInformationCard` | ❌ refactor: `updateInfo` in `useCandidateDetail` |
+| POST `/records` (create, step 7) | not built yet | build it in a hook from the start |
+
+Why a single rule beats case-by-case choices:
+- **Predictable:** a new teammate knows where to look for "how is this data changed?" (the hook) and "why does this button say Saving…?" (the component).
+- **Reusable:** the drawer and the full page call the same hook, so both get the same requests and race guards for free.
+- **Testable:** a hook can be tested with `renderHook` and a mocked API; a component can be tested with a fake `onSave` that resolves or rejects.
+- **Replaceable:** moving to React Query or SWR later means rewriting hooks, not components.
+
+This is the hooks-era form of an older React idea: **container vs presentational components**. Containers fetched data and passed it down; presentational components only rendered props. Custom hooks replaced most container components, because the data logic can now live in a function instead of a wrapper component.
+
+**Interview Q:** *How do you structure data fetching in a React app?* A typed API layer (one function per endpoint), data hooks that call it and own the server state (custom hooks or React Query/SWR), and components that call the hooks and own only UI state. The rule: no API imports in components.
+
+**Interview Q:** *Container vs presentational components: is that still a thing?* The split still matters, but hooks replaced most container components. Today the "container" is usually a custom hook (`useCandidateNotes`) and the component that calls it, while small presentational pieces (`NoteCard`, `EmptyState`) just take props.
+
+**Interview Q:** *You find a component calling `fetch` directly. What would you change?* Move the request into the API layer (typed, with response validation), call it from a data hook that owns the data, and let the component call the hook's function and keep only its pending/error/success UI. Make the hook throw on failure so the component can show the error where it belongs.
 
 ---
 
