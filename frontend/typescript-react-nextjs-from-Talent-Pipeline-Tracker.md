@@ -443,7 +443,71 @@ if (params.page) query.set("page", String(params.page));
 
 ### 18. Custom hooks
 
-A function whose name starts with `use` and that calls other hooks. It lets you reuse stateful logic between components. Each call gets its own state.
+**What:** a function whose name starts with `use` and that calls other hooks (`useState`, `useEffect`, `useContext`, …). It lets you reuse stateful logic between components. Each call gets its own state: hooks share *logic*, not *state*.
+
+**Why:** without one, every component that needs the same data copies the same state, effect, error handling, and race-condition guard. Example: the drawer and the full page both need a candidate's notes. Inline, that is ~40 lines written twice:
+
+```tsx
+// ❌ Without a hook: this block is copied into candidate-drawer.tsx AND candidate-full-page.tsx
+const [notes, setNotes] = useState<Note[]>([]);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState<string | null>(null);
+useEffect(() => {
+  let ignore = false;
+  getNotes(id)
+    .then((res) => { if (!ignore) setNotes(res.data); })
+    .catch((err) => { if (!ignore) setError(err.message); })
+    .finally(() => { if (!ignore) setLoading(false); });
+  return () => { ignore = true; };
+}, [id]);
+```
+
+**How:** move the logic into a `use…` function, take inputs as parameters, and return what callers need.
+
+```ts
+// hooks/useCandidateNotes.ts (shortened)
+export function useCandidateNotes(id: string | null) {
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loading, setLoading] = useState(id !== null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (id === null) return; // drawer closed: nothing to load
+    let ignore = false;      // only the latest request updates the notes
+    async function load(candidateId: string) {
+      try {
+        const response = await getNotes(candidateId);
+        if (!ignore) setNotes(response.data);
+      } catch (err) {
+        if (!ignore) setError(err instanceof Error ? err.message : "Could not load the notes.");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+    load(id);
+    return () => { ignore = true; };
+  }, [id]);
+
+  return { notes, loading, error };
+}
+```
+
+```tsx
+// ✅ With the hook: one line in each view
+const notes = useCandidateNotes(candidateId); // drawer (null while closed)
+const notes = useCandidateNotes(id);          // full page
+```
+
+Two design points from this hook:
+- **Accepts `null`.** Hooks can't be called inside an `if`, so the drawer calls it on every render, even while closed. The hook skips the fetch itself when `id` is `null`.
+- **Called in the parent, not the tab.** It first lived inside `CandidateNotes`, so every Overview → Notes switch unmounted and remounted it, which refetched each time. Moved up to the drawer/full page (which stay mounted), the notes load once per candidate. `CandidateNotes` now only displays props.
+
+**Benefits:**
+- **Reuse (DRY):** one fix applies everywhere it's used.
+- **Separation of concerns:** the hook decides *how to get* data; the component decides *how it looks*.
+- **Readable components:** a view reads as `const notes = useCandidateNotes(id)` instead of 40 lines of plumbing.
+- **Room to grow:** later `retry`, `addNote`, `removeNote` go in the same hook, and both views get them.
+- **Testable:** the logic can be tested on its own (e.g. with `renderHook`).
 
 | Hook | What it does |
 |---|---|
@@ -451,6 +515,8 @@ A function whose name starts with `use` and that calls other hooks. It lets you 
 | `useCandidateTable` | Fetches one table page; loading/error/retry; out-of-range page |
 | `useCandidateFeed` | Mobile infinite scroll; keeps the scroll position |
 | `useCandidateDrawerHref` | Builds a drawer link that keeps the list query |
+| `useCandidateDetail` | One candidate from GET `/records/:id`; loading/error/retry |
+| `useCandidateNotes` | A candidate's notes from GET `/records/:id/notes`; loading/error |
 
 ```ts
 // hooks/useCandidateDrawerHref.ts: the smallest example
@@ -467,6 +533,12 @@ const { loadMoreAreaRef, ...feed } = useCandidateFeed(filters);
 ```
 
 **Interview Q:** *Custom hook vs utility function?* Use a hook only when the logic needs hooks: state, effects, or context. Pure logic goes in a normal function (see `lib/utils/candidate-urls.ts`).
+
+**Interview Q:** *If two components call the same custom hook, do they share state?* No. Each call has its own `useState`/`useEffect`, so the drawer and full page each hold their own notes. To share state, put it in context (see #56) and read it through a hook.
+
+**Interview Q:** *Why must a custom hook start with `use`?* So React and the linter know it calls hooks and can enforce the Rules of Hooks inside it.
+
+**Interview Q:** *Your Notes tab refetches every time the user switches tabs. Why, and how do you fix it?* The fetching hook lives in the tab component, which unmounts on every switch, losing its state. Call the hook in a parent that stays mounted and pass the data down as props (lifting state up, see #60).
 
 **Rules of Hooks:** only call hooks at the top level (not in conditions or loops), and only from components or other hooks.
 
