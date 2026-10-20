@@ -83,6 +83,9 @@
 - [Data hooks and mutations](#data-hooks-and-mutations)
   66. The hook owns the data, the component owns the buttons (the `useMutation` idea)
   67. One rule for the whole app: hooks own API calls and data, components own buttons and feedback
+- [UI state that survives a remount](#ui-state-that-survives-a-remount)
+  68. Local state dies on unmount: lift "in-progress" UI state into context
+  69. "Missing" vs "empty": `undefined` vs `""` (the truthiness bug)
 
 ---
 
@@ -1941,6 +1944,99 @@ This is the hooks-era form of an older React idea: **container vs presentational
 **Interview Q:** *Container vs presentational components: is that still a thing?* The split still matters, but hooks replaced most container components. Today the "container" is usually a custom hook (`useCandidateNotes`) and the component that calls it, while small presentational pieces (`NoteCard`, `EmptyState`) just take props.
 
 **Interview Q:** *You find a component calling `fetch` directly. What would you change?* Move the request into the API layer (typed, with response validation), call it from a data hook that owns the data, and let the component call the hook's function and keep only its pending/error/success UI. Make the hook throw on failure so the component can show the error where it belongs.
+
+---
+
+## UI state that survives a remount
+
+### 68. Local state dies on unmount: lift "in-progress" UI state into context
+
+`useState` belongs to **one mounted instance** of a component. When React unmounts that instance, its state is thrown away. If the same component mounts somewhere else, it starts from its initial values.
+
+That is what happened in this project. The drawer (`/`) and the expanded view (`/candidates/[id]`) are **different routes**, and each renders its own `CandidateNotes`. Clicking Expand or Drawer View unmounts one and mounts the other, so:
+
+| State | Where it lived | After switching views |
+|---|---|---|
+| Selected tab | drafts context | ✅ kept |
+| Overview form edits | drafts context | ✅ kept |
+| Half-typed note | `useState` in `CandidateNotes` | ❌ lost |
+| Open delete confirmation | `useState` in `CandidateNotes` | ❌ lost, trash had to be clicked again |
+
+The fix is the same as for the form drafts (#56): move that state **above both routes**, into the drafts context, keyed by candidate ID.
+
+```ts
+// context/candidate-drafts.tsx
+export type CandidateDraft = {
+  general?: CandidateFormValues; // General information form
+  progress?: Pick<Candidate, "status" | "stage">; // Recruitment progress form
+  tab?: CandidateTab; // Overview / Notes; missing means Overview
+  noteDraft?: string; // New note text; present (even "") means the composer is open
+  deletingNoteId?: string; // The note whose delete confirmation is open
+};
+```
+
+```tsx
+// components/candidate-detail/candidate-notes.tsx
+const { drafts, setDraft, clearDraft } = useCandidateDrafts();
+const draft = drafts[candidateId]?.noteDraft;
+const composerOpen = draft !== undefined;
+// One ID (not a flag per card), so two confirmations can't be open at once
+const confirmingId = drafts[candidateId]?.deletingNoteId;
+const closeConfirmation = () => clearDraft(candidateId, "deletingNoteId");
+
+const openComposer = () => {
+  closeConfirmation();
+  setDraft(candidateId, "noteDraft", "");
+};
+```
+
+Not everything moved. `saving` / `deleting` (a request in flight) and the success banner stay local: they belong to one request in one view, and a new view shouldn't pretend a request it didn't start is still running.
+
+How to decide where UI state lives:
+- **Only this component, gone on unmount is fine** → `useState`.
+- **Must survive a remount or be shared by two trees** → context (or a store such as Zustand) above both.
+- **Should survive a reload or be shareable as a link** → the URL (#39), like the list filters.
+- **Should survive closing the browser** → `localStorage` (or the server).
+
+**Interview Q:** *A user's form input disappears when they navigate between two views. Why, and how do you fix it?* The input lived in `useState` inside a component that unmounts on navigation, so its state was discarded. Lift it to a parent that stays mounted across both views: a context provider in a shared layout, a store, or the URL. Key it by entity ID so drafts for different records don't mix.
+
+**Interview Q:** *Why not put `saving` in the context too?* It describes a request this view started. After a switch, the new view didn't start that request and can't await it, so showing "Saving…" there would be a lie. Keep transient request state local; keep the user's *intent* (text, which dialog is open) in shared state.
+
+**Interview Q:** *Wouldn't the `key` prop or `<Activity>` help?* `key` does the opposite: changing it forces a remount and **resets** state. `<Activity mode="hidden">` (#44) keeps a hidden tree's state alive, but only within one tree. Here the two views are separate routes, so shared state above them is the direct fix.
+
+### 69. "Missing" vs "empty": `undefined` vs `""` (the truthiness bug)
+
+`noteDraft` uses two different "no text" values:
+
+| Value | Meaning |
+|---|---|
+| `undefined` (key missing) | Composer **closed** |
+| `""` | Composer **open**, nothing typed yet |
+
+So the check has to be `draft !== undefined`, not `if (draft)`. `""` is **falsy**, so a truthiness check treats "open but empty" the same as "closed".
+
+The context's `clearDraft` originally had exactly that bug:
+
+```ts
+// ❌ Before: "" counts as "no draft", so it is never deleted
+if (!current[id]?.[part]) return current;
+
+// ✅ After: only a missing key means "no draft"
+// no draft: nothing to change ("" is still a draft: an open, empty composer)
+if (current[id]?.[part] === undefined) return current;
+```
+
+With the old check, Add Note → Cancel left `noteDraft: ""` behind. The composer looked closed until you switched views, and then it reopened by itself.
+
+Falsy values in JavaScript: `false`, `0`, `-0`, `0n`, `""`, `null`, `undefined`, `NaN`. Any of them can be a **valid value** (an empty string, a count of 0), so a truthiness check is only safe when none of them can be.
+
+Related tools:
+- `??` (#10) falls back only on `null`/`undefined`: `count ?? 1` keeps `0`, but `count || 1` replaces it.
+- `key in obj` or `Object.hasOwn(obj, key)` asks "is the key there?", even when the value is `undefined`.
+
+**Interview Q:** *What's wrong with `if (value)` as an existence check?* It also rejects valid falsy values: `0`, `""`, `false`. Check what you actually mean: `value !== undefined`, `value != null` (null or undefined), or `key in obj`.
+
+**Interview Q:** *`||` vs `??`?* `a || b` uses `b` when `a` is any falsy value. `a ?? b` uses `b` only when `a` is `null` or `undefined`. Use `??` for defaults when `0` or `""` are real values.
 
 ---
 
