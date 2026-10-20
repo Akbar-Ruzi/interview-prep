@@ -77,6 +77,9 @@
   61. Accessible client-side validation
   62. `useId` and `form.requestSubmit()`
   63. Modal dialog focus: move in, trap, return
+- [Async results and stale closures](#async-results-and-stale-closures)
+  64. Stale closures after `await` and the "latest value" ref
+  65. Update a ref in an effect, not during render
 
 ---
 
@@ -1729,6 +1732,87 @@ The focusable elements are looked up **on every Tab**, because the content chang
 **Interview Q:** *What does an accessible modal need?* `role="dialog"`, `aria-modal="true"`, an accessible name (`aria-labelledby`), focus moved in on open, focus trapped inside, Escape to close, and focus returned to the trigger on close.
 
 **Interview Q:** *Other ways to trap focus?* The native `<dialog>` element with `showModal()` traps focus and handles Escape for you. The `inert` attribute on everything outside the modal makes it unfocusable. Libraries such as `focus-trap` also exist. A hand-written trap is fine when the layout makes those awkward.
+
+---
+
+## Async results and stale closures
+
+### 64. Stale closures after `await` and the "latest value" ref
+
+A function remembers the variables from the render it was created in (a closure, see #15). After an `await`, the component may have re-rendered with new props, but the waiting code still sees the **old** values. That old copy is a *stale closure*.
+
+The notes save in this project hits exactly this. In the drawer, the user can open another candidate while a note is still saving:
+
+```ts
+// ❌ Stale: `id` is frozen at the render where Save was clicked
+const addNote = (note: Note) => {
+  if (note.record_id !== id) return; // id is still candidate A here...
+  setNotes((current) => [...current, note]);
+};
+```
+
+| Time | What happens | `id` in the waiting code | Real current candidate |
+|---|---|---|---|
+| 1 | Save clicked on candidate A | A | A |
+| 2 | User opens candidate B; the hook re-renders | A (old closure) | B |
+| 3 | POST for A finishes → `addNote(noteA)` | A → check passes ❌ | B → A's note shown under B |
+
+The fix is a ref that always holds the **latest** value. Every closure reads the same ref object, so `ref.current` is never stale:
+
+```ts
+// hooks/useCandidateNotes.ts
+// The candidate shown now, read by addNote after a save finishes
+const currentIdRef = useRef(id);
+useEffect(() => {
+  currentIdRef.current = id;
+}, [id]);
+
+// After a successful POST, show the server's new note (and +1 on the count).
+// Ignored if another candidate was opened while the save was running.
+const addNote = (note: Note) => {
+  if (note.record_id !== currentIdRef.current) return; // ✅ always the latest
+  setNotes((current) => [...current, note]);
+};
+```
+
+Why a ref and not state: changing `ref.current` doesn't re-render, and reading it gives the value *right now*, not the value from some earlier render (see #22).
+
+**Interview Q:** *What is a stale closure in React?* A callback (often after `await`, or inside `setTimeout`/`setInterval`) that reads props or state from the render it was created in, not the current one. Fixes: functional updates (`setX((current) => …)`) when you only need the latest *state*; a "latest value" ref when you need the latest *prop* or value outside the setter; or cancel the work when inputs change.
+
+**Interview Q:** *The data fetch uses an `ignore` flag (#21). Why not use the same thing here?* `ignore` lives in an effect and is flipped by that effect's cleanup when `id` changes. The save runs from an **event handler** (a form submit), which has no cleanup. The ref plays the same role: "is this result still for what's on screen?"
+
+**Interview Q:** *Could `useEffectEvent` (#26) replace the ref?* No. An Effect Event can only be called from inside effects. `addNote` is called from an event handler after `await`, so a ref is the right tool.
+
+### 65. Update a ref in an effect, not during render
+
+The tempting shortcut is to assign the ref in the component body:
+
+```ts
+// ❌ Writing a ref during render
+const currentIdRef = useRef(id);
+currentIdRef.current = id;
+```
+
+React's rule: **rendering must be pure**. Don't read or write `ref.current` during render (the `react-hooks` lint rules flag it). Reasons:
+
+- **Renders can be thrown away.** With concurrent rendering (transitions, Suspense), React may render, then discard that render without committing it. A ref written during that render would hold a value the screen never showed.
+- **Renders can run more than once.** Strict Mode renders twice in development (#32) to catch exactly these side effects.
+- **Refs aren't tracked.** React doesn't re-render when a ref changes, so values read from it during render can go out of date silently.
+
+An effect runs only **after** React commits the render to the screen, so the ref is updated to the value the user actually sees:
+
+```ts
+// ✅ Updated after commit
+useEffect(() => {
+  currentIdRef.current = id;
+}, [id]);
+```
+
+Rule of thumb: read and write refs in **effects and event handlers**, never in the render body. Use state for anything that must appear on screen.
+
+**Interview Q:** *Isn't there a tiny gap between the render and the effect where the ref is still old?* Yes, but nothing reads it then. `addNote` runs later, when a network request finishes. If code needed the new value before the browser paints, `useLayoutEffect` updates it earlier (synchronously after commit).
+
+**Interview Q:** *When is it okay to touch a ref during render?* Only for lazy initialization of the ref itself, e.g. `if (ref.current === null) ref.current = createExpensiveThing();`, which runs once and gives the same result every time.
 
 ---
 
