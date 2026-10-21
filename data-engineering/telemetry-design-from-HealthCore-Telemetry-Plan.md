@@ -259,6 +259,19 @@ Define the envelope once, then compose each event from it.
 - `const` fixes a field to one exact value (e.g. `"event_type": { "const": "login_failed" }`).
 - `additionalProperties: false` rejects any key not declared, which is how the allowlist gets enforced in the schema.
 
+**Watch the two meanings of `properties`:** in JSON Schema it's a keyword ("these are the allowed fields and their rules"); in our envelope it's also a field name (the event payload). Tell them apart by the parent: under a schema it's the keyword, listed next to `eventId` it's the field.
+
+```json
+// event-schemas.json
+"eventEnvelope": {
+  "properties": {                       // keyword
+    "eventId":    { "type": "string", "format": "uuid" },
+    "properties": { "type": "object" }  // envelope field (the payload)
+  },
+  "additionalProperties": false
+}
+```
+
 **Interview Q:** *What's a gotcha with `additionalProperties: false` and `allOf`?* Each subschema only knows its own `properties`, so putting `additionalProperties: false` on the envelope can reject fields declared in the other branch. Apply it where the full set of keys is known (e.g. inside the `properties` object of each event).
 
 ### 14. Keeping the docs and the schema in sync
