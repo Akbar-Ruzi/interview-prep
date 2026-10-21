@@ -86,6 +86,7 @@
 - [UI state that survives a remount](#ui-state-that-survives-a-remount)
   68. Local state dies on unmount: lift "in-progress" UI state into context
   69. "Missing" vs "empty": `undefined` vs `""` (the truthiness bug)
+  70. State that survives when it shouldn't: `<Activity>` and resetting in effect cleanup
 
 ---
 
@@ -2037,6 +2038,64 @@ Related tools:
 **Interview Q:** *What's wrong with `if (value)` as an existence check?* It also rejects valid falsy values: `0`, `""`, `false`. Check what you actually mean: `value !== undefined`, `value != null` (null or undefined), or `key in obj`.
 
 **Interview Q:** *`||` vs `??`?* `a || b` uses `b` when `a` is any falsy value. `a ?? b` uses `b` only when `a` is `null` or `undefined`. Use `??` for defaults when `0` or `""` are real values.
+
+### 70. State that survives when it shouldn't: `<Activity>` and resetting in effect cleanup
+
+#68 was state that was **lost** on a view switch. This is the opposite: state that was **kept** when it should have been reset.
+
+With `cacheComponents: true` (#44), Next.js doesn't unmount a page you navigate away from. It wraps it in `<Activity mode="hidden">`:
+
+| | Unmount (normal) | `<Activity mode="hidden">` |
+|---|---|---|
+| `useState` values | thrown away | **kept** |
+| Effects | cleanup runs | cleanup runs |
+| Showing it again | fresh mount, initial state | same state, effects run again |
+
+The create form hit this. After a successful POST it shows "Candidate created successfully." for a few seconds, then opens the new candidate:
+
+```ts
+// components/candidate-form/create-candidate-form.tsx
+const [created, setCreated] = useState<{
+  candidate: Candidate;
+  values: CandidateFormValues;
+} | null>(null);
+```
+
+| Step | What happens | `created` on the hidden `/candidates/new` |
+|---|---|---|
+| 1 | Create on `/candidates/new` → message → timer opens `/candidates/<id>` | set |
+| 2 | Later: Add candidate → Expand → `/candidates/new` again | still set ❌ |
+| 3 | The old page is shown again; the effect re-runs | old success message, and the timer redirects to the old candidate |
+
+The fix: the effect's **cleanup** runs both on unmount and when an `<Activity>` hides the tree, so it is the one place that covers both. Reset there:
+
+```ts
+useEffect(() => {
+  if (!created) return;
+  const timer = setTimeout(
+    () => openCreated(created.candidate),
+    SUCCESS_MESSAGE_MS,
+  );
+  return () => {
+    clearTimeout(timer);
+    // cacheComponents keeps a page we left alive but hidden (<Activity>),
+    // with its state. Reset here, so a form shown again (e.g. Expand to
+    // /candidates/new later) starts empty, not on the old success message.
+    setCreated(null);
+    setSaving(false);
+  };
+}, [created]);
+```
+
+`openCreated` is an Effect Event (#26): the parents pass a new `onCreated` arrow on every render, and listing it as a dependency would restart the timer on every render.
+
+How to spot this kind of bug: a screen that "remembers" a finished action (a success message, an open dialog, a spinner) when you come back to it. Ask: *does this route stay mounted when I leave it?*
+
+**Interview Q:** *What does React's `<Activity>` do?* With `mode="hidden"` it hides a subtree without unmounting it: state and DOM are kept, effects are cleaned up, and updates are deferred. With `mode="visible"` again, effects re-run with the kept state. Next.js uses it with `cacheComponents` so Back/Forward restore pages instantly, scroll and form input included.
+
+**Interview Q:** *A component shows stale UI when the user returns to a page. How do you fix it?* First find out why the state survived (`<Activity>`, a cache, a context above the route). Then reset the one-off state at the right moment: in an effect cleanup (runs on hide and unmount), when the action finishes, or by changing a `key` to force a fresh mount. Don't reset everything: keeping state on Back is usually the feature, not the bug.
+
+**Interview Q:** *Why not reset `created` right before calling `onCreated`?* That only covers the timer firing. If the user leaves while the message is showing (Close, Back, Expand), the timer is cancelled and the reset never runs. The cleanup covers every way of leaving.
 
 ---
 
