@@ -10,6 +10,7 @@ Personal interview prep notes: key concepts in TypeScript, React, Next.js, Pytho
 | Python | *Coming soon* |
 | AI | *Coming soon* |
 | Databases | *Coming soon* |
+| Data Engineering | [Telemetry design (HealthCore Telemetry Plan)](data-engineering/telemetry-design-from-HealthCore-Telemetry-Plan.md) |
 
 ## Format
 
