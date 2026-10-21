@@ -87,6 +87,11 @@
   68. Local state dies on unmount: lift "in-progress" UI state into context
   69. "Missing" vs "empty": `undefined` vs `""` (the truthiness bug)
   70. State that survives when it shouldn't: `<Activity>` and resetting in effect cleanup
+- [Create flow](#create-flow)
+  71. Request type vs response type: `?:` vs `| null`, and conditional spread
+  72. A sentinel ID (`new`): one set of routes and URL helpers for view and create
+  73. Read browser state at click time instead of during render
+  74. `inert` for an overlay that blocks the content underneath
 
 ---
 
@@ -2096,6 +2101,170 @@ How to spot this kind of bug: a screen that "remembers" a finished action (a suc
 **Interview Q:** *A component shows stale UI when the user returns to a page. How do you fix it?* First find out why the state survived (`<Activity>`, a cache, a context above the route). Then reset the one-off state at the right moment: in an effect cleanup (runs on hide and unmount), when the action finishes, or by changing a `key` to force a fresh mount. Don't reset everything: keeping state on Back is usually the feature, not the bug.
 
 **Interview Q:** *Why not reset `created` right before calling `onCreated`?* That only covers the timer firing. If the user leaves while the message is showing (Close, Back, Expand), the timer is cancelled and the reset never runs. The cleanup covers every way of leaving.
+
+---
+
+## Create flow
+
+### 71. Request type vs response type: `?:` vs `| null`, and conditional spread
+
+The same field can need **different types** depending on the direction of the data. The POST response always includes the URL keys, with `null` when empty:
+
+```json
+{ "linkedin_url": null, "cv_url": null, "status": "received", "stage": "pending" }
+```
+
+So the two types describe two different things:
+
+```ts
+// types/candidate.ts
+// API → app: the key is always there; the value may be null
+export type Candidate = {
+  // ...
+  linkedin_url: string | null;
+  cv_url: string | null;
+};
+
+// App → API: an empty URL is simply left out
+export type CreateCandidatePayload = Pick<
+  Candidate,
+  "full_name" | "email" | "phone" | "position" | "experience_years"
+> & {
+  linkedin_url?: string;
+  cv_url?: string;
+};
+```
+
+| Syntax | Means | Example value |
+|---|---|---|
+| `x: string \| null` | key always present, value may be `null` | `{ x: null }` |
+| `x?: string` | key may be missing | `{}` |
+| `x?: string \| null` | both | either |
+
+The PUT body keeps `string | null` on purpose: an edit sends `null` to **clear** a link the user deleted. A new candidate has nothing to clear.
+
+Building an object with optional keys uses a **conditional spread**. Spreading `null`, `undefined`, or `false` adds nothing:
+
+```ts
+// lib/utils/candidate-form.ts
+export function toCreatePayload(
+  values: CandidateFormValues,
+): CreateCandidatePayload {
+  const { linkedin_url, cv_url, ...required } = toUpdatePayload(values);
+  return {
+    ...required,
+    ...(linkedin_url && { linkedin_url }), // null → nothing added
+    ...(cv_url && { cv_url }),
+  };
+}
+```
+
+Rest destructuring (`...required`, #16) splits off the two optional fields so the rest can be copied as is.
+
+**Interview Q:** *Difference between `field?: string` and `field: string | undefined`?* With `?`, the key can be missing entirely. With `| undefined`, the key must be written but can hold `undefined`. Under `exactOptionalPropertyTypes`, `?:` also forbids explicitly setting `undefined`.
+
+**Interview Q:** *Why not reuse the response type for the request?* The response has server-set fields (`id`, `status`, `applied_at`, …) the client must not send, and its optional values are `null`, not missing. Derive the request type from the response type (`Pick`/`Omit`) so names stay in sync, then adjust what differs.
+
+### 72. A sentinel ID (`new`): one set of routes and URL helpers for view and create
+
+The create form needed the same two presentations as the candidate details: a drawer over the list and an expanded page. Instead of new routes, the word `new` stands in for a candidate ID:
+
+```ts
+// lib/constants.ts
+// Stands in for a candidate ID to open the create form instead:
+// /?candidate=new (drawer) and /candidates/new (full page).
+// Real IDs are UUIDs, so it can't clash with a candidate.
+export const NEW_CANDIDATE_ID = "new";
+```
+
+| View | Details | Create |
+|---|---|---|
+| Drawer | `/?candidate=<id>` | `/?candidate=new` |
+| Full page | `/candidates/<id>` | `/candidates/new` |
+
+Every existing helper (`drawerHref`, `fullPageHref`, `toListQuery`), the Expand / Drawer View buttons, the drawer's focus trap and Escape, and the drafts context (keyed by ID) work for create with no changes. The views only branch on the ID:
+
+```ts
+// components/candidate-detail/candidate-drawer.tsx
+const isCreate = candidateId === NEW_CANDIDATE_ID;
+// The record to load: none while closed or creating
+const recordId = isCreate ? null : candidateId;
+
+const { candidate, loading, error, retry, updateStatus, updateInfo } =
+  useCandidateDetail(recordId);
+```
+
+Hooks can't be called conditionally, so the hook is always called and gets `null` ("load nothing") instead of being skipped.
+
+The trade-off: the sentinel must never be a valid real ID. UUIDs guarantee that here; with numeric IDs, `new` is also safe, but a name-based slug could clash.
+
+**Interview Q:** *In Next.js, would `app/candidates/new/page.tsx` or `[id]` win for `/candidates/new`?* A static segment always takes priority over a dynamic one, so a `new` folder would win. This project uses the `[id]` route for both, branching on the ID, to reuse the page shell and its buttons.
+
+**Interview Q:** *Why put "create" in the URL at all instead of a `useState(isOpen)`?* A URL works with Back/Forward, survives a refresh, and can be linked to. It also lets two different views (drawer and full page) agree on what is open, which local state in one component can't.
+
+### 73. Read browser state at click time instead of during render
+
+Add Candidate must keep the list's filters and open the drawer on tablet/desktop but the full page on mobile. The obvious tools have costs:
+
+| Tool | Cost here |
+|---|---|
+| `useSearchParams()` | the component needs a `<Suspense>` boundary, so the header title would leave the prerendered HTML |
+| a `useIsMobile()` hook | the server can't know the width: render `null` first, then switch, or risk a hydration mismatch |
+
+The header only needs these values **when the button is clicked**, so it reads them then:
+
+```tsx
+// components/candidate-list/candidates-header.tsx
+const openCreateForm = () => {
+  const listQuery = toListQuery(new URLSearchParams(window.location.search));
+  // Same breakpoint as Tailwind's md: (768px)
+  const isMobile = window.matchMedia("(max-width: 767px)").matches;
+  router.push(
+    isMobile
+      ? fullPageHref(listQuery, NEW_CANDIDATE_ID)
+      : drawerHref(listQuery, NEW_CANDIDATE_ID),
+  );
+};
+```
+
+Event handlers run only in the browser, after hydration, so `window` is always defined there and nothing differs between the server and client render.
+
+Rule: **read browser-only values in event handlers or effects, not during render**. Read them during render (with a hook) only when the rendered output itself depends on them.
+
+**Interview Q:** *What is a hydration mismatch?* The HTML the server rendered differs from the client's first render, e.g. because the client read `window.innerWidth` or `Date.now()` while rendering. React warns and may re-render the tree. Fix it by reading such values in effects/handlers, or rendering a placeholder until mounted.
+
+**Interview Q:** *CSS media queries vs `matchMedia` in JS?* Use CSS (`max-md:hidden`) for what is shown: it needs no JS and has no mismatch. Use `matchMedia` when **behavior** changes, like which URL a click opens.
+
+### 74. `inert` for an overlay that blocks the content underneath
+
+After a successful create, the form stays on screen, blurred, under "Candidate created successfully." until the details open. A visual overlay alone isn't enough: keyboard users can still Tab into the inputs behind it, and screen readers still read them.
+
+```tsx
+// components/candidate-form/create-candidate-form.tsx
+<section className="relative ...">
+  {/* inert while the message shows: no clicks or Tab into the old form */}
+  <div inert={created !== null}>
+    <CandidateForm ... />
+  </div>
+
+  {created && (
+    <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-sm">
+      <SuccessMessage message="Candidate created successfully." />
+    </div>
+  )}
+</section>
+```
+
+`inert` makes a subtree unfocusable, unclickable, and hidden from assistive technology in one attribute. `SuccessMessage` has `role="status"`, so the message is announced without moving focus. React 19 accepts `inert` as a boolean prop.
+
+| Tool | Blocks clicks | Blocks Tab | Hides from screen readers |
+|---|---|---|---|
+| `pointer-events: none` | ✅ | ❌ | ❌ |
+| `disabled` (form controls) | ✅ | ✅ | ❌ (read as "dimmed") |
+| `aria-hidden="true"` | ❌ | ❌ | ✅ (but focusable items stay reachable: an a11y bug) |
+| `inert` | ✅ | ✅ | ✅ |
+
+**Interview Q:** *How do you stop focus reaching content behind a modal?* The native `<dialog>` with `showModal()` makes everything outside it inert automatically. Otherwise set `inert` on the background (or the blocked part), or trap Tab by hand (#63).
 
 ---
 
