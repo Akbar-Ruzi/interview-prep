@@ -11,6 +11,8 @@
   3. Mandatory metrics vs identified opportunities
   4. Instrumentation points (touchpoints)
   4b. Contract first, infrastructure later (data contracts)
+  4c. Emit business events after the commit, not on submit
+  4d. Edge-triggered vs level-triggered alerts
 - [Event design](#event-design)
   5. The Event Envelope
   6. Idempotency and deduplication with `eventId`
@@ -108,6 +110,38 @@ monthly executive report, and Claire's compliance alerts.
 Future consumers shape the contract (every event carries `clinic_id` and `country` so it can be aggregated by clinic and country), but they aren't built now.
 
 **Interview Q:** *Why design the contract before choosing the pipeline?* The contract is the expensive part to change: once many producers emit events and many consumers read them, renaming a field breaks everyone. Infrastructure can be swapped behind a stable contract. Building pipelines for consumers that don't exist yet is premature (YAGNI) and adds cost with no decision behind it.
+
+### 4c. Emit business events after the commit, not on submit
+
+A business event should describe something that **actually happened**. If you emit it when the form is submitted, or before the database transaction commits, a failed validation or a rollback still produces an event, and the metrics overcount.
+
+```md
+<!-- telemetry-plan.md -->
+- **System touchpoint:** Backend, inbound order creation. Emitted after the order and
+  the stock increment are committed, never on form submit, so failed or rolled-back
+  orders are not counted.
+```
+
+Failures get their **own** event instead (here `order_validation_failed`), so nothing is lost.
+
+**Interview Q:** *The DB commit succeeds but the event send fails (or the reverse). How do you keep them consistent?* Use the **transactional outbox** pattern: write the event to an `outbox` table in the same transaction as the business data, and have a separate relay publish it afterwards. Combined with a unique `eventId`, consumers can deduplicate any retries (at-least-once delivery).
+
+### 4d. Edge-triggered vs level-triggered alerts
+
+- **Level-triggered**: fire on every check while the condition is true ("stock **is** below minimum").
+- **Edge-triggered**: fire only when the condition **changes** from false to true ("stock **crosses** below minimum").
+
+```md
+<!-- telemetry-plan.md -->
+- **Definition:** Fires when a product's stock at a clinic crosses from at or above its
+  configured minimum to below it. It fires on the crossing only, not on every order while
+  stock stays below the minimum.
+- **System touchpoint:** ... (`previous_stock >= min_threshold` and `current_stock < min_threshold`).
+```
+
+Example: stock 3, minimum 10, five more single-item orders. Level-triggered = 5 alerts for one shortage; edge-triggered = 1.
+
+**Interview Q:** *Why does this matter for alerting?* Level-triggered alerts on a persistent condition cause alert fatigue, so people start ignoring them. Edge-triggered gives one actionable alert per incident. It needs the previous state (before/after values), and you usually add a debounce for values flickering around the threshold.
 
 ---
 
