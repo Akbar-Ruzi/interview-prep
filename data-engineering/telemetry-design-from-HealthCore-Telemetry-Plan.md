@@ -13,6 +13,7 @@
   4b. Contract first, infrastructure later (data contracts)
   4c. Emit business events after the commit, not on submit
   4d. Edge-triggered vs level-triggered alerts
+  4e. Where to emit: backend vs frontend
 - [Event design](#event-design)
   5. The Event Envelope
   6. Idempotency and deduplication with `eventId`
@@ -84,16 +85,34 @@ Example: we capture `stock_threshold_triggered` because we need to know how ofte
 The exact place in a user flow or system path where an event is emitted. You find them by walking the flow end to end.
 
 ```md
-<!-- plan.md -->
-Map the flow from **authenticated user accesses the system** → **completes an inbound
-or outbound order**. Identify **≥5 instrumentation points**, which must include:
-- direct stock modification attempts (rejected) → `direct_stock_edit_rejected`
-- failed validations → `order_validation_failed`
-- minimum threshold activations → `stock_threshold_triggered`
-- order completion → `inbound_order_created` / `outbound_order_created`
+<!-- telemetry-plan.md -->
+Login → Open inventory → (Direct stock edit attempt) → Submit order → Validation → Order saved → Stock recalculated
+
+| # | Step              | What can happen                                         | Event fired                  | Emitted by |
+| 4 | Direct stock edit | The user tries to change stock directly; it is rejected | `direct_stock_edit_rejected` | Backend    |
+| 5 | Submit order      | The server rejects the order (missing field, ...)       | `order_validation_failed`    | Backend    |
+| 6 | Order saved       | The order is saved successfully and stock is updated    | `inbound_order_created` / `outbound_order_created` | Backend |
+
+Each order submission ends in exactly one outcome: `order_validation_failed` (nothing saved)
+or `inbound_order_created` / `outbound_order_created` (saved).
 ```
 
+Design each step's outcomes to be **mutually exclusive**: one attempt = one event. Then "failure rate = failed / (failed + created)" is a simple, correct ratio.
+
 **Interview Q:** *Should you track only successes?* No. Failures and rejections (validation errors, blocked actions) often tell you more: where users get stuck, or who is trying to bypass controls.
+
+### 4e. Where to emit: backend vs frontend
+
+- **Backend**: the source of truth for anything that changes data or enforces a rule (orders saved, stock edits rejected, logins failed). It can't be skipped by calling the API directly, and it isn't lost to ad blockers or closed tabs.
+- **Frontend**: only for things the server can't see (screens viewed, page load time, browser errors).
+
+```md
+<!-- telemetry-plan.md -->
+The backend is the source of truth: a frontend that hides the option is not enough,
+because the API can be called directly.
+```
+
+**Interview Q:** *Why not fire `order_created` from the frontend when the user clicks Save?* The click doesn't mean the order was saved. Validation or the DB can still fail, retries can double-count, and client events get lost. Emit from the backend after the commit; keep frontend events for UI behaviour.
 
 ### 4b. Contract first, infrastructure later (data contracts)
 
