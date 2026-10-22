@@ -33,6 +33,8 @@
   17. PII vs PHI, HIPAA and UK GDPR
   18. Data minimisation, anonymisation, and pseudonymisation
   19. Risks and exclusions: deliberate scope cuts
+  20. Closed enums instead of free text to block PHI
+  21. Limit the alerts, not the events (and sample uniformly)
 
 ---
 
@@ -352,3 +354,14 @@ A field that carries context (like `department`) is a closed `enum`, not a free-
 ```
 
 **Interview Q:** *How do you stop sensitive data leaking through a "harmless" context field?* Constrain it to a closed enum (plus `additionalProperties: false` for unknown keys), so the schema rejects anything outside the approved values instead of relying on people being careful.
+
+### 21. Limit the alerts, not the events (and sample uniformly)
+
+For security events (`login_failed`, `direct_stock_edit_rejected`), every event is stored, because each one may be evidence. Only the **alert** is rate-limited (e.g. one alert per account every 15 minutes). For high-volume performance events, a **uniform random sample** (e.g. 10% of `api_latency_recorded`, decided per `requestId`) keeps percentiles accurate; counts are multiplied back by 10.
+
+```markdown
+- **Alert 1, one account under attack:** when `consecutive_failures` reaches 5 for the same `userId`, alert Claire.
+- **Alert limit:** at most one alert per account every 15 minutes.
+```
+
+**Interview Q:** *Why not just sample or debounce failed logins like latency events?* Dropping security events destroys the audit trail and can hide a slow attack. Keep every event and throttle only the notifications. Sampling is fine for latency because the decision uses distributions (p95), which a uniform sample preserves. Sampling only slow requests would bias them.
