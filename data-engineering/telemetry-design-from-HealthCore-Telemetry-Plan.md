@@ -35,6 +35,7 @@
   19. Risks and exclusions: deliberate scope cuts
   20. Closed enums instead of free text to block PHI
   21. Limit the alerts, not the events (and sample uniformly)
+  22. Testing a schema: a valid example and a negative test
 
 ---
 
@@ -365,3 +366,15 @@ For security events (`login_failed`, `direct_stock_edit_rejected`), every event 
 ```
 
 **Interview Q:** *Why not just sample or debounce failed logins like latency events?* Dropping security events destroys the audit trail and can hide a slow attack. Keep every event and throttle only the notifications. Sampling is fine for latency because the decision uses distributions (p95), which a uniform sample preserves. Sampling only slow requests would bias them.
+
+### 22. Testing a schema: a valid example and a negative test
+
+Checking that a schema is valid draft-07 isn't enough. Validate a real example event against it (it must pass), then add a forbidden field to the same event (it must fail). The second test proves the allowlist actually blocks leaks.
+
+```python
+jsonschema.Draft7Validator(schema).validate(example_event)        # must pass
+bad = copy.deepcopy(example_event); bad["properties"]["patient_name"] = "x"
+assert not jsonschema.Draft7Validator(schema).is_valid(bad)       # must fail
+```
+
+**Interview Q:** *How do you know your telemetry schema really blocks PHI?* Write a negative test: an event with an extra field like `patient_name` must be rejected. Also check that the docs and the schema list the same events, properties and required flags, so they can't drift apart.
