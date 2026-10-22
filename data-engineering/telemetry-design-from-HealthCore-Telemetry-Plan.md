@@ -341,3 +341,14 @@ The Markdown plan and the JSON schema describe the same events, so they must mat
 A documented list of events you considered and dropped, plus data you will never capture (PHI, raw passwords, tokens), each with a reason.
 
 **Interview Q:** *Why write down what you're NOT tracking?* It shows the scope was a choice, not an oversight. It stops someone from adding a risky field later, and it gives reviewers and auditors a clear record.
+
+### 20. Closed enums instead of free text to block PHI
+
+A field that carries context (like `department`) is a closed `enum`, not a free-text string. Free text lets someone type a patient's name into telemetry by accident. An enum makes that event impossible to emit. Adding a new value means a minor `schemaVersion` bump.
+
+```json
+// event-schemas.json — outbound_order_created
+"department": { "type": "string", "enum": ["primary_care", "specialty_care", "chronic_care"] }
+```
+
+**Interview Q:** *How do you stop sensitive data leaking through a "harmless" context field?* Constrain it to a closed enum (plus `additionalProperties: false` for unknown keys), so the schema rejects anything outside the approved values instead of relying on people being careful.
