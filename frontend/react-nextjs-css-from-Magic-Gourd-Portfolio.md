@@ -27,7 +27,7 @@
 - [Next.js (App Router)](#nextjs-app-router)
   19. Server Components by default, `"use client"` only where needed
   20. Static export (`output: 'export'`)
-  21. `next/font`: self-hosted fonts as CSS variables
+  21. `next/font`: self-hosted fonts as CSS variables (and variable fonts with `opsz`)
   22. Metadata API
   23. `next/link` vs a plain `<a>` (and `usePathname`)
   24. Hydration mismatches and `suppressHydrationWarning`
@@ -516,11 +516,12 @@ Each route becomes a file (`out/index.html`, `out/experience.html`), which any s
 
 **Interview Q:** *What do you give up with a static export?* Anything that needs a Node server at request time: API routes, server actions, middleware, ISR/on-demand revalidation, cookies/headers in server components, and the built-in image optimization.
 
-### 21. `next/font`: self-hosted fonts as CSS variables
+### 21. `next/font`: self-hosted fonts as CSS variables (and variable fonts with `opsz`)
 
 ```js
 // app/layout.js
-const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["600", "800"], variable: "--nf-display" });
+// variable font + optical-size axis: one file holds every weight (200–800)
+const display = Bricolage_Grotesque({ subsets: ["latin"], axes: ["opsz"], variable: "--nf-display" });
 const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--nf-mono" });
 
 <html lang="en" className={`${display.variable} ${mono.variable}`}>
@@ -537,6 +538,12 @@ const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variab
 `next/font` downloads the fonts at build time and serves them from your own domain (no request to Google, no privacy issue), preloads them, and generates a size-adjusted fallback font to reduce layout shift.
 
 **Interview Q:** *Why load only the weights you use?* Each weight is a separate file. Note the flip side: if CSS asks for a weight you didn't load (e.g. `font-semibold` = 600 with only 400/500 loaded), the browser fakes it ("synthetic bold"), which looks worse and can change text width.
+
+**Variable fonts.** A variable font is one file with *axes* (weight `wght`, width, optical size `opsz`…) instead of one file per weight. The optical-size axis redraws letters for their size: big headings get a tighter, more condensed cut, small text a looser, more readable one. With `font-optical-sizing: auto` (the default) the browser picks the `opsz` value from the `font-size`, no extra CSS. In my hero the big "Hey There, I'm Akbar." got 8% narrower and matched the design exactly once I loaded `opsz`. In `next/font`, `axes` only works on the variable font, so you leave `weight` out.
+
+Gotcha I hit: with only 600 and 800 loaded, `font-bold` (700) used to *snap* to the nearest loaded file (800), and `font-normal` on a heading showed as 600. The variable font draws every weight exactly, so those headings suddenly looked different. Fix: set each one to the weight it was really showing (`font-extrabold`, `font-semibold`).
+
+**Interview Q:** *Static weights or a variable font?* Few weights (1–2): static files are usually smaller. Many weights, or you want an axis like `opsz` or fine-tuned weights: one variable file is simpler and often smaller in total. Either way, check what weights your CSS actually asks for.
 
 ### 22. Metadata API
 
