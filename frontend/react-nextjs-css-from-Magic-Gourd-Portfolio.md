@@ -672,7 +672,13 @@ Some users get dizzy or nauseous from motion (vestibular disorders) and turn on 
 // Tailwind variants for one-off cases
 <button className="motion-reduce:hidden">…</button>
 <span className="motion-reduce:animate-none animate-spin" />
+
+// components/About.jsx: the skill pills always turn green on hover,
+// but only wiggle when motion is OK (variants stack: motion-safe + hover)
+<li className="cursor-default transition-colors hover:bg-cta hover:text-white motion-safe:hover:animate-wiggle">
 ```
+
+Two ways to write it: `motion-reduce:` takes the animation away (opt-out), `motion-safe:` only adds it when the user hasn't asked for less motion (opt-in). Opt-in is the safer default: if you forget a case, nothing moves. Note the pill keeps its color change with reduced motion: a color fade isn't movement.
 
 In this project reduced motion doesn't remove features: the gourd shows open with its chips and code, and the caravan stands still with its speech bubble.
 
@@ -728,6 +734,8 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 ```
 
 - v4 has no `tailwind.config.js`: configuration lives in CSS.
+- An `--animate-*` token can reuse keyframes defined anywhere in the CSS: `--animate-wiggle: wiggle 0.5s ease-in-out;` gives `animate-wiggle` for the About pills from the same `@keyframes wiggle` the gourd chips already use (one animation, two places).
+- Tailwind only emits the theme variables and utilities you actually use, so unused tokens cost nothing in the final CSS.
 - Cascade layers (`@layer`) decide priority by layer order, not selector specificity, so a utility class always beats a component rule.
 
 **Interview Q:** *Why use cascade layers?* To control priority between groups of CSS (reset → base → components → utilities) without specificity wars or `!important`.
