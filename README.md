@@ -6,7 +6,7 @@ Personal interview prep notes: key concepts in TypeScript, React, Next.js, Pytho
 
 | Subject | Notes |
 |---|---|
-| Frontend | [TypeScript, React, Next.js (Talent Pipeline Tracker)](frontend/typescript-react-nextjs-from-Talent-Pipeline-Tracker.md) |
+| Frontend | [TypeScript, React, Next.js (Talent Pipeline Tracker)](frontend/typescript-react-nextjs-from-Talent-Pipeline-Tracker.md)<br>[React, Next.js, CSS animation, web performance (Magic Gourd portfolio)](frontend/react-nextjs-css-from-Magic-Gourd-Portfolio.md) |
 | Python | *Coming soon* |
 | AI | *Coming soon* |
 | Databases | *Coming soon* |
