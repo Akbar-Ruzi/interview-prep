@@ -747,7 +747,8 @@ The same problem exists for grid and flex **items**: they default to `min-width:
 `z-index` only compares elements **inside the same stacking context**. A new context starts on an element with `position` + `z-index`, `opacity` below 1, any `transform`, `filter`, or `isolation: isolate`. Children can never escape their parent's context, however big their `z-index`.
 
 ```jsx
-// Hero.jsx: the faint watermark sits BEHIND the hero text (-z-10) but must not fall behind
+// Hero.jsx (an earlier version; the watermark was removed later, the pattern still applies):
+// the faint watermark sits BEHIND the hero text (-z-10) but must not fall behind
 // the hero's own background. isolate makes the text column its own stacking context,
 // so -z-10 means "bottom of this box", not "bottom of the page"
 <div className="relative isolate grid">
