@@ -50,7 +50,7 @@
   39. `transform-box: fill-box` for SVG transforms
   40. Container query units (`cqw`)
   41. Tailwind v4: `@theme` tokens and `@layer`
-  42. Sticky nav: `scroll-padding-top` and smooth scrolling
+  42. Sticky nav: `scroll-padding-top` and smooth scrolling (and doing the #section scroll yourself)
   43. Scroll-driven animations (`animation-timeline: view()`)
 - [Browser APIs](#browser-apis)
   44. Web Audio API: sounds without audio files
@@ -977,7 +977,7 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 
 **Interview Q:** *Why use cascade layers?* To control priority between groups of CSS (reset → base → components → utilities) without specificity wars or `!important`.
 
-### 42. Sticky nav: `scroll-padding-top` and smooth scrolling
+### 42. Sticky nav: `scroll-padding-top` and smooth scrolling (and doing the #section scroll yourself)
 
 ```css
 html {
@@ -989,6 +989,35 @@ html {
 `scroll-margin-top` on each section only fixes anchor jumps. `scroll-padding-top` on the scroll container also applies when the browser scrolls a focused element into view, so keyboard users never get a focused link hidden under the nav.
 
 **Interview Q:** *Clicking `#contact` hides the heading under the sticky header. Fix?* `scroll-padding-top` on `html` (or `scroll-margin-top` on the targets), equal to the header height plus some space.
+
+**When CSS alone wasn't enough (measured in this project):**
+- **Landing spot off by 20px.** The scroll reveal (43) moves each section down 20px with `transform` until it's on screen. The browser's #hash scroll measures the *transformed* box, so sections landed at 92px instead of 112px. `getBoundingClientRect()` includes transforms; `offsetTop` doesn't (it's layout only), so measure with `offsetTop`.
+- **Jump instead of glide after a page change.** From `/experience`, `/#about` goes through Next's router, which scrolls to the hash with smooth scrolling switched off: a jump. And gliding from the top of a long page would feel slow anyway.
+- **Underline flicker.** During a long glide the scroll-spy underlined every section passed on the way, and none in the gaps between them.
+
+```js
+// utils/scrollToHash.js (shortened): measure without transforms, glide, tell the scroll-spy where it's going
+let y = 0;
+for (let node = el; node; node = node.offsetParent) y += node.offsetTop;
+y -= parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
+document.documentElement.dataset.scrollTarget = hash;      // Navbar underlines the destination meanwhile
+window.scrollTo({ top: y, behavior: reduceMotion ? "instant" : "smooth" });
+// keyboard users continue from the section, like after a native #hash jump
+el.setAttribute("tabindex", "-1");
+el.focus({ preventScroll: true });
+```
+
+```js
+// components/shared/PageTransition.jsx: same page → glide + update the URL without a jump;
+// another page → let the router not scroll, then jump near the section and glide the last 200px
+if (url.pathname === location.pathname) { scrollToHash(url.hash); history.pushState(null, "", url.hash); }
+else router.push(url.pathname + url.hash, { scroll: false }); // …then scrollToHash(hash, { lead: 200 }) once it renders
+```
+
+- `history.pushState` changes the URL without scrolling or reloading (setting `location.hash` would trigger the browser's own jump). Next.js App Router supports native `pushState`, and Back still walks through the sections.
+- Moving focus to a non-interactive target needs `tabindex="-1"` (focusable by script, not in the Tab order); hide its outline, since it isn't a control.
+
+**Interview Q:** *Your "scroll to section" lands a little off, but only sometimes. What could it be?* A `transform` on the target or an ancestor (an entrance animation, a sticky header that shrinks), which `getBoundingClientRect` and the browser's anchor scroll both include. Measure layout with `offsetTop` / `offsetParent`, or wait until the animation has finished.
 
 ### 43. Scroll-driven animations (`animation-timeline: view()`)
 
