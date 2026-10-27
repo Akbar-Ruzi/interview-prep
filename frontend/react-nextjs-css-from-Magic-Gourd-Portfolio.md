@@ -70,7 +70,7 @@
 The HTML `<dialog>` element gives you a real modal for free: `showModal()` adds the backdrop, traps focus inside, closes on Esc, and puts focus back on the button that opened it. React only needs a ref to call it.
 
 ```jsx
-// components/Dialog.jsx
+// components/shared/Dialog.jsx
 const Dialog = ({ label, what, project }) => {
   const dialogRef = useRef(null);
   const titleId = useId();
@@ -126,7 +126,7 @@ const titleId = useId();
 Instead of several booleans (`isOpen`, `isAnimating`, …) that can contradict each other, keep one state with a fixed set of values. Derive everything else from it.
 
 ```jsx
-// components/HeroGourd.jsx
+// components/hero/HeroGourd.jsx
 // closed → opening → open → closing → closed
 const [state, setState] = useState("closed");
 const busy = state === "opening" || state === "closing";   // derived, not stored
@@ -158,7 +158,7 @@ const toggle = () => {
 An effect that starts a timer must clear it in the cleanup. Otherwise the timer can fire after the component unmounted, or after the state already changed.
 
 ```jsx
-// components/HeroGourd.jsx: move on once the animation has finished
+// components/hero/HeroGourd.jsx: move on once the animation has finished
 useEffect(() => {
   if (!busy) return;
   const timer = setTimeout(() => {
@@ -175,7 +175,7 @@ useEffect(() => {
 ```
 
 ```jsx
-// components/Contact.jsx: hide the success message after 3s
+// components/contact/Contact.jsx: hide the success message after 3s
 useEffect(() => {
   if (status !== "sent") return;
   const timer = setTimeout(() => setStatus(""), SENT_VISIBLE_MS);
@@ -190,7 +190,7 @@ useEffect(() => {
 When a `key` changes, React throws away the old element and mounts a new one. A fresh DOM node starts its CSS animation from the beginning. This replaces the classic "remove class, force reflow, add class" trick.
 
 ```jsx
-// components/HeroGourd.jsx
+// components/hero/HeroGourd.jsx
 const [picks, setPicks] = useState(0);   // how many times a chip was clicked
 
 // every pick remounts the lid, so the "pour" animation plays again (even for the same chip)
@@ -221,7 +221,7 @@ setErrors((prev) => ({ ...prev, [name]: false }));      // update one key of an 
 Refs hold things React doesn't render: DOM nodes, observers, timers. Changing `.current` does not re-render.
 
 ```jsx
-// components/Caravan.jsx
+// components/hero/Caravan.jsx
 const strip = useRef(null);
 const walker = useRef(null);
 const bubble = useRef(null);
@@ -242,7 +242,7 @@ useEffect(() => {
 Pattern: subscribe in the effect, run once immediately for the current state, unsubscribe in the cleanup.
 
 ```jsx
-// components/Navbar.jsx: scroll-spy
+// components/navbar/Navbar.jsx: scroll-spy
 useEffect(() => {
   const update = () => {
     setStuck(window.scrollY > 40);
@@ -259,7 +259,7 @@ useEffect(() => {
 ```
 
 ```jsx
-// components/HeroGourd.jsx: follow the user's motion setting
+// components/hero/HeroGourd.jsx: follow the user's motion setting
 useEffect(() => {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
   const sync = () => reduce.matches && setState("open");
@@ -279,7 +279,7 @@ useEffect(() => {
 `IntersectionObserver` tells you when an element enters or leaves the viewport, without a scroll listener doing layout math on every frame.
 
 ```jsx
-// components/Caravan.jsx: pause the walking animation while it can't be seen
+// components/hero/Caravan.jsx: pause the walking animation while it can't be seen
 const observer = new IntersectionObserver(([entry]) => {
   offScreen = !entry.isIntersecting;
   update();
@@ -314,10 +314,21 @@ document.addEventListener("visibilitychange", update);
 
 ### 11. Content in data files, UI in components
 
-All text lives in `src/utils/*.js`; components only render it. Changing copy never touches layout code.
+All text lives in `src/data/<section>/*.js`; components only render it. Changing copy never touches layout code.
+
+Both folders are organized by section, so everything for one section sits together; `utils/` keeps only real helper functions:
+
+```
+src/
+  components/  navbar/ hero/ about/ experience/ projects/ contact/ footer/ shared/
+  data/        navbar/ hero/ about/ experience/ projects/ contact/          (content: text and lists)
+  utils/       withBold.jsx, gourdSounds.js                                (helpers: functions)
+```
+
+Files were moved with `git mv` so `git log --follow` keeps each file's history. No `index.js` re-export files: imports name the file (`@/components/hero/Hero`), which keeps them explicit and easy to search. A gitignored file is ignored **by path**, so moving it means moving its `.gitignore` line too, or it would show up as a new file and could be committed by accident.
 
 ```js
-// utils/heroData.js
+// data/hero/heroData.js
 const heroData = {
   roles: ["Front-End", "Full-Stack", "Applied AI"],
   greeting: "Hey There,",
@@ -328,7 +339,7 @@ const heroData = {
 ```
 
 ```js
-// utils/gourdSnippets.js: each code line is a list of [text, color] parts
+// data/hero/gourdSnippets.js: each code line is a list of [text, color] parts
 const gourdSnippets = {
   Python: {
     file: "db.py",
@@ -346,7 +357,7 @@ const gourdSnippets = {
 ### 12. Rendering a list, and keys in nested lists
 
 ```jsx
-// components/HeroGourd.jsx: render a code snippet from data
+// components/hero/HeroGourd.jsx: render a code snippet from data
 {gourdSnippets[tech].lines.map((parts, i) => (
   <text key={i} x="63" y={325 + i * 17} xmlSpace="preserve">
     {parts.map(([part, color], j) => (
@@ -378,7 +389,7 @@ const withBold = (text) =>
 ### 14. Form validation with an object of checks, focus the first error
 
 ```jsx
-// components/Contact.jsx
+// components/contact/Contact.jsx
 const checks = {                              // in form order
   user_email: validateEmail,
   subject: validateRequired,
@@ -430,7 +441,7 @@ if (fields._gotcha.value) return;
 The tech chips are SVG `<g>` elements, not `<button>`s, so everything a button gives for free must be added by hand.
 
 ```jsx
-// components/HeroGourd.jsx
+// components/hero/HeroGourd.jsx
 <g
   role="button"
   tabIndex={open ? 0 : -1}                    // reachable with Tab only while open
@@ -468,7 +479,7 @@ Here the button is only busy for ~4s, and a keyboard user who just pressed it wo
 ### 18. One component, two layouts: a `preview` prop
 
 ```jsx
-// components/Experience.jsx
+// components/experience/Experience.jsx
 const PREVIEW_COUNT = 4;
 
 const Experience = ({ preview = false }) => {
@@ -501,7 +512,7 @@ The key difference is timing:
 So use `useLayoutEffect` when the effect changes what the user would see in that very frame (measure layout and reposition, or swap a class), otherwise they see one wrong frame: a flash or a jump. Everything else goes in `useEffect`, which doesn't block painting.
 
 ```jsx
-// components/PageTransition.jsx: when the new page has rendered, swap "leaving" (old page faded out)
+// components/shared/PageTransition.jsx: when the new page has rendered, swap "leaving" (old page faded out)
 // for "entering" (slide-in) BEFORE the browser paints it; with useEffect the new page could
 // flash fully visible for one frame before the slide-in starts
 useLayoutEffect(() => {
@@ -525,7 +536,7 @@ useLayoutEffect(() => {
 DOM events travel **down** from `window` to the target (capture phase), then back **up** (bubble phase). React's `onClick` handlers (like the one inside `next/link`) run in the bubble phase. A listener added with `capture: true` on `window` runs first, so it can `preventDefault()` and take over.
 
 ```js
-// components/PageTransition.jsx: catch clicks on links to another page before next/link does
+// components/shared/PageTransition.jsx: catch clicks on links to another page before next/link does
 const onClick = (e) => {
   const a = e.target.closest?.("a[href]");
   if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -630,7 +641,7 @@ export const metadata = { title: "Experience · Akbar Ruzi" };
 ### 25. `next/link` vs a plain `<a>` (and `usePathname`)
 
 ```jsx
-// components/Navbar.jsx
+// components/navbar/Navbar.jsx
 const isHome = usePathname() === "/";
 const Anchor = isHome ? "a" : Link;               // pick the element at runtime
 const to = (hash) => (isHome ? hash : `/${hash}`);
@@ -848,7 +859,7 @@ The browser renders in steps: style → layout → paint → composite. Changing
 One keyframe rule for all chips; each element passes its own start offset and delay as CSS variables.
 
 ```jsx
-// components/HeroGourd.jsx
+// components/hero/HeroGourd.jsx
 const fly = (dx, dy, d) => ({ "--dx": `${dx}px`, "--dy": `${dy}px`, "--d": `${d}s` });
 
 <g className="pop" style={fly(pill.dx, pill.dy, pill.d)}>…</g>
@@ -898,7 +909,7 @@ Some users get dizzy or nauseous from motion (vestibular disorders) and turn on 
 <button className="motion-reduce:hidden">…</button>
 <span className="motion-reduce:animate-none animate-spin" />
 
-// components/About.jsx: the skill pills always turn green on hover,
+// components/about/About.jsx: the skill pills always turn green on hover,
 // but only wiggle when motion is OK (variants stack: motion-safe + hover)
 <li className="cursor-default transition-colors hover:bg-cta hover:text-white motion-safe:hover:animate-wiggle">
 ```
@@ -1050,7 +1061,7 @@ export const playOpen = () => play(cork, 0.67);   // timed to the lid coming off
 Setting the same `animation` value again does nothing. Remove it, force the browser to apply that, then put it back.
 
 ```js
-// components/Caravan.jsx
+// components/hero/Caravan.jsx
 b.style.animation = "none";
 void b.offsetWidth;            // reading layout forces a reflow, so "none" takes effect
 b.style.animation = "";        // back to the stylesheet's animation: it starts over
