@@ -24,30 +24,33 @@
   16. Accessible custom buttons (`role`, `tabIndex`, `aria-pressed`, Enter/Space)
   17. `aria-disabled` vs `disabled`
   18. One component, two layouts: a `preview` prop
+  19. `useLayoutEffect` vs `useEffect`: run before paint
+  20. Capture-phase listeners: run before another component's handler
 - [Next.js (App Router)](#nextjs-app-router)
-  19. Server Components by default, `"use client"` only where needed
-  20. Static export (`output: 'export'`)
-  21. `next/font`: self-hosted fonts as CSS variables (and variable fonts with `opsz`)
-  22. Metadata API
-  23. `next/link` vs a plain `<a>` (and `usePathname`)
-  24. Hydration mismatches and `suppressHydrationWarning`
+  21. Server Components by default, `"use client"` only where needed
+  22. Static export (`output: 'export'`)
+  23. `next/font`: self-hosted fonts as CSS variables (and variable fonts with `opsz`)
+  24. Metadata API
+  25. `next/link` vs a plain `<a>` (and `usePathname`)
+  26. Layouts persist across navigations, pages remount
+  27. Hydration mismatches and `suppressHydrationWarning`
 - [CSS and animation](#css-and-animation)
-  25. Animate only `transform` and `opacity`
-  26. CSS custom properties per element: staggered animations
-  27. Playing a keyframe animation in reverse
-  28. `prefers-reduced-motion`
-  29. `transform-box: fill-box` for SVG transforms
-  30. Container query units (`cqw`)
-  31. Tailwind v4: `@theme` tokens and `@layer`
-  32. Sticky nav: `scroll-padding-top` and smooth scrolling
+  28. Animate only `transform` and `opacity`
+  29. CSS custom properties per element: staggered animations
+  30. Playing a keyframe animation in reverse
+  31. `prefers-reduced-motion`
+  32. `transform-box: fill-box` for SVG transforms
+  33. Container query units (`cqw`)
+  34. Tailwind v4: `@theme` tokens and `@layer`
+  35. Sticky nav: `scroll-padding-top` and smooth scrolling
 - [Browser APIs](#browser-apis)
-  33. Web Audio API: sounds without audio files
-  34. Restarting a CSS animation from JavaScript
+  36. Web Audio API: sounds without audio files
+  37. Restarting a CSS animation from JavaScript
 - [Web performance](#web-performance)
-  35. Core Web Vitals: LCP, CLS, INP
-  36. Layout shift from web fonts
-  37. Measuring before optimizing (Lighthouse, a fair comparison)
-  38. Removing an animation library
+  38. Core Web Vitals: LCP, CLS, INP
+  39. Layout shift from web fonts
+  40. Measuring before optimizing (Lighthouse, a fair comparison)
+  41. Removing an animation library
 
 ---
 
@@ -480,11 +483,65 @@ const Experience = ({ preview = false }) => {
 
 **Interview Q:** *Prop flag or two components?* A flag is fine while the differences are small (count, heading, a link). If the variants keep diverging, split them and share the inner pieces instead.
 
+### 19. `useLayoutEffect` vs `useEffect`: run before paint
+
+The key difference is timing:
+- `useEffect` normally runs **after** the browser has painted the update.
+- `useLayoutEffect` runs synchronously **after React updates the DOM but before the browser paints** it.
+
+So use `useLayoutEffect` when the effect changes what the user would see in that very frame (measure layout and reposition, or swap a class), otherwise they see one wrong frame: a flash or a jump. Everything else goes in `useEffect`, which doesn't block painting.
+
+```jsx
+// components/PageTransition.jsx: when the new page has rendered, swap "leaving" (old page faded out)
+// for "entering" (slide-in) BEFORE the browser paints it; with useEffect the new page could
+// flash fully visible for one frame before the slide-in starts
+useLayoutEffect(() => {
+  if (!leaving.current) return; // first load, or the browser's back/forward: no animation
+  leaving.current = false;
+  const html = document.documentElement;
+  html.classList.remove("leaving");
+  html.classList.add("entering");
+  const timer = setTimeout(() => html.classList.remove("entering"), ENTER_MS);
+  return () => {
+    clearTimeout(timer);
+    html.classList.remove("entering");
+  };
+}, [pathname]);
+```
+
+**Interview Q:** *When would you pick `useLayoutEffect`, and what's the cost?* When you must read layout or change the DOM before the user sees the frame (tooltips positioned from a measurement, avoiding a flash). The cost: it blocks painting until it finishes, so keep it short. It also doesn't run on the server (React warns in SSR), so only use it for browser-only work.
+
+### 20. Capture-phase listeners: run before another component's handler
+
+DOM events travel **down** from `window` to the target (capture phase), then back **up** (bubble phase). React's `onClick` handlers (like the one inside `next/link`) run in the bubble phase. A listener added with `capture: true` on `window` runs first, so it can `preventDefault()` and take over.
+
+```js
+// components/PageTransition.jsx: catch clicks on links to another page before next/link does
+const onClick = (e) => {
+  const a = e.target.closest?.("a[href]");
+  if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  if (a.target === "_blank" || a.hasAttribute("download")) return;
+  const url = new URL(a.href, location.href);
+  if (url.origin !== location.origin || url.pathname === location.pathname) return;
+
+  e.preventDefault(); // next/link sees this and doesn't navigate; we do it ourselves
+  html.classList.add("leaving");
+  router.push(url.pathname + url.search + url.hash); // start loading now, during the slide-out
+};
+window.addEventListener("click", onClick, true); // true = capture phase
+```
+
+- **Event delegation:** one listener for every link on every page, instead of wrapping each `<Link>`.
+- Respect the user: modified clicks (Ctrl/Cmd/Shift = new tab/window), middle clicks, `target="_blank"` and downloads are left alone.
+- Lesson from measuring on a phone: first I waited for the 0.3s slide-out and *then* called `router.push()`, which added ~0.5s to every page change. Starting the navigation at the click, while the animation plays, brought it down to ~0.2s extra.
+
+**Interview Q:** *What's the difference between `stopPropagation()` and `preventDefault()`?* `preventDefault()` cancels the browser's default action (following the link) but the event keeps travelling, so other handlers still run and can check `e.defaultPrevented`. `stopPropagation()` stops the event reaching other elements' handlers but doesn't cancel the default action.
+
 ---
 
 ## Next.js (App Router)
 
-### 19. Server Components by default, `"use client"` only where needed
+### 21. Server Components by default, `"use client"` only where needed
 
 In the App Router every component is a Server Component unless the file starts with `"use client"`. Server Components send no JavaScript to the browser.
 
@@ -502,7 +559,7 @@ In this site only 5 of 14 components are client components, each for a reason:
 
 **Interview Q:** *What does `"use client"` actually do?* It marks a boundary: that module and everything it imports are bundled for the browser and hydrated. It doesn't mean "render only on the client" (client components still render to HTML on the server first).
 
-### 20. Static export (`output: 'export'`)
+### 22. Static export (`output: 'export'`)
 
 ```js
 // next.config.mjs
@@ -516,7 +573,7 @@ Each route becomes a file (`out/index.html`, `out/experience.html`), which any s
 
 **Interview Q:** *What do you give up with a static export?* Anything that needs a Node server at request time: API routes, server actions, middleware, ISR/on-demand revalidation, cookies/headers in server components, and the built-in image optimization.
 
-### 21. `next/font`: self-hosted fonts as CSS variables (and variable fonts with `opsz`)
+### 23. `next/font`: self-hosted fonts as CSS variables (and variable fonts with `opsz`)
 
 ```js
 // app/layout.js
@@ -545,7 +602,7 @@ Gotcha I hit: with only 600 and 800 loaded, `font-bold` (700) used to *snap* to 
 
 **Interview Q:** *Static weights or a variable font?* Few weights (1–2): static files are usually smaller. Many weights, or you want an axis like `opsz` or fine-tuned weights: one variable file is simpler and often smaller in total. Either way, check what weights your CSS actually asks for.
 
-### 22. Metadata API
+### 24. Metadata API
 
 ```js
 // app/layout.js
@@ -561,7 +618,7 @@ export const metadata = { title: "Experience · Akbar Ruzi" };
 
 **Interview Q:** *How do you set per-page `<title>` in the App Router?* Export `metadata` (static) or `generateMetadata` (async, from params/data) from a `layout` or `page`. Next merges them from the root down. It only works in Server Components.
 
-### 23. `next/link` vs a plain `<a>` (and `usePathname`)
+### 25. `next/link` vs a plain `<a>` (and `usePathname`)
 
 ```jsx
 // components/Navbar.jsx
@@ -578,7 +635,23 @@ const to = (hash) => (isHome ? hash : `/${hash}`);
 
 **Interview Q:** *What does `next/link` add over `<a>`?* Client-side navigation (no full reload, layout state kept) and automatic prefetching of the target route when the link is visible.
 
-### 24. Hydration mismatches and `suppressHydrationWarning`
+### 26. Layouts persist across navigations, pages remount
+
+In the App Router, going from `/` to `/experience` swaps only the **page** inside the layout. The **layout** doesn't unmount or re-render, so components in it keep their state, refs, timers and event listeners. Put things there that must survive a page change.
+
+```jsx
+// app/layout.js: the layout stays a server component; PageTransition is a small client component inside it
+<body>
+  {children}
+  <PageTransition />
+</body>
+```
+
+The page transition has two halves: on the old page a click marks "leaving" (a ref), and when the new page renders, an effect on `usePathname()` sees that ref and plays the slide-in. Both halves must run in the **same component instance**. Inside each page it would unmount with the old page and lose the ref, so the new page wouldn't know a transition was in progress. (The plain-HTML design does full reloads, so it has to pass a flag through `sessionStorage` instead.)
+
+**Interview Q:** *Where do you keep UI that must survive navigation (a player, a progress bar, a transition)?* In a layout above the pages that change. Also useful: `template.js` is the opposite, a layout that **does** remount on every navigation.
+
+### 27. Hydration mismatches and `suppressHydrationWarning`
 
 Hydration = React attaching to server-rendered HTML. If the first client render differs from the server HTML, React warns (and may re-render).
 
@@ -604,7 +677,7 @@ Two cases in this project:
 
 ## CSS and animation
 
-### 25. Animate only `transform` and `opacity`
+### 28. Animate only `transform` and `opacity`
 
 The browser renders in steps: style → layout → paint → composite. Changing `width`, `top` or `margin` re-runs layout for the page. `transform` and `opacity` can be handled by the compositor (often the GPU) alone, so they stay smooth at 60fps and cause no layout shift.
 
@@ -618,7 +691,7 @@ The browser renders in steps: style → layout → paint → composite. Changing
 
 **Interview Q:** *Why is animating `left` slower than `transform: translateX`?* `left` triggers layout and paint on every frame; `transform` only composites an already-painted layer.
 
-### 26. CSS custom properties per element: staggered animations
+### 29. CSS custom properties per element: staggered animations
 
 One keyframe rule for all chips; each element passes its own start offset and delay as CSS variables.
 
@@ -637,7 +710,7 @@ const fly = (dx, dy, d) => ({ "--dx": `${dx}px`, "--dy": `${dy}px`, "--d": `${d}
 
 **Interview Q:** *How do you pass a value from React to CSS?* A CSS custom property in `style` (`style={{ "--x": value }}`), then use `var(--x)` in CSS. Better than inline `transform` strings: the animation logic stays in CSS.
 
-### 27. Playing a keyframe animation in reverse
+### 30. Playing a keyframe animation in reverse
 
 Closing the gourd reuses the opening keyframes with `animation-direction: reverse`. The delays are mirrored with `calc()`, so the last item out goes back in first.
 
@@ -653,7 +726,7 @@ Closing the gourd reuses the opening keyframes with `animation-direction: revers
 
 **Interview Q:** *What does `animation-fill-mode: both` do?* Applies the starting keyframe during the delay (`backwards`) and keeps the end keyframe after the animation (`forwards`).
 
-### 28. `prefers-reduced-motion`
+### 31. `prefers-reduced-motion`
 
 Some users get dizzy or nauseous from motion (vestibular disorders) and turn on "Reduce motion" in their OS. Respect it.
 
@@ -684,7 +757,7 @@ In this project reduced motion doesn't remove features: the gourd shows open wit
 
 **Interview Q:** *Remove all animation, or reduce it?* Reduce: keep the content and meaning, drop large movement, parallax, auto-playing loops and smooth scrolling. Short fades are usually fine.
 
-### 29. `transform-box: fill-box` for SVG transforms
+### 32. `transform-box: fill-box` for SVG transforms
 
 In SVG, `transform-origin` is measured from the SVG's own top-left corner by default, so `rotate()` on a small shape swings it around the whole drawing. `transform-box: fill-box` makes percentages refer to the shape's own bounding box.
 
@@ -701,7 +774,7 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 
 **Interview Q:** *Why does my SVG element rotate around the wrong point?* Its transform origin is in SVG user space (the viewport's top-left). Set `transform-box: fill-box` and a `transform-origin` relative to the element.
 
-### 30. Container query units (`cqw`)
+### 33. Container query units (`cqw`)
 
 `100vw` is the window width; the caravan walks across a card that is narrower than the window on wide screens. With `container-type: inline-size`, `100cqw` is the width of the element itself.
 
@@ -716,7 +789,7 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 
 **Interview Q:** *Media queries vs container queries?* Media queries react to the viewport; container queries react to a parent's size, so a component adapts wherever it's placed (sidebar, grid cell, full width).
 
-### 31. Tailwind v4: `@theme` tokens and `@layer`
+### 34. Tailwind v4: `@theme` tokens and `@layer`
 
 ```css
 @import "tailwindcss";
@@ -740,7 +813,7 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 
 **Interview Q:** *Why use cascade layers?* To control priority between groups of CSS (reset → base → components → utilities) without specificity wars or `!important`.
 
-### 32. Sticky nav: `scroll-padding-top` and smooth scrolling
+### 35. Sticky nav: `scroll-padding-top` and smooth scrolling
 
 ```css
 html {
@@ -757,7 +830,7 @@ html {
 
 ## Browser APIs
 
-### 33. Web Audio API: sounds without audio files
+### 36. Web Audio API: sounds without audio files
 
 The open/close sounds are generated: an oscillator gliding in pitch, plus a burst of filtered noise, shaped by a volume envelope.
 
@@ -792,7 +865,7 @@ export const playOpen = () => play(cork, 0.67);   // timed to the lid coming off
 
 **Interview Q:** *Why might audio not play on page load?* Autoplay policies: an `AudioContext` created without a user gesture starts `suspended`. Create or `resume()` it in response to a click or key press.
 
-### 34. Restarting a CSS animation from JavaScript
+### 37. Restarting a CSS animation from JavaScript
 
 Setting the same `animation` value again does nothing. Remove it, force the browser to apply that, then put it back.
 
@@ -812,7 +885,7 @@ In React, changing the element's `key` (concept 5) does the same thing more decl
 
 ## Web performance
 
-### 35. Core Web Vitals: LCP, CLS, INP
+### 38. Core Web Vitals: LCP, CLS, INP
 
 | Metric | Measures | Good |
 |---|---|---|
@@ -826,7 +899,7 @@ Ways this project avoids CLS: the gourd sits in an `aspect-ratio` box (space res
 
 **Interview Q:** *What causes CLS, and how do you fix it?* Images/embeds without dimensions (set `width`/`height` or `aspect-ratio`), content inserted above existing content (reserve space), and web fonts changing text size (see next concept).
 
-### 36. Layout shift from web fonts
+### 39. Layout shift from web fonts
 
 Measured in this project: on phones the hero role pill is set in JetBrains Mono. Until that font loads, the fallback font is wider, so the roles wrap to two lines (pill 50px tall). When the real font arrives they fit on one line (34px), and the whole hero jumps up ~17px: CLS 0.12.
 
@@ -844,7 +917,7 @@ Fixes:
 
 **Interview Q:** *What is FOUT, and how do you prevent the shift it causes?* Flash Of Unstyled Text: the fallback shows first, then swaps to the web font. Prevent the jump with a matched fallback (`size-adjust`), preloading, and self-hosting (`next/font`).
 
-### 37. Measuring before optimizing (Lighthouse, a fair comparison)
+### 40. Measuring before optimizing (Lighthouse, a fair comparison)
 
 To check whether the new animations hurt performance, I compared two commits instead of guessing:
 
@@ -862,7 +935,7 @@ Lessons: compare like with like (same server, same throttling), repeat runs, and
 
 **Interview Q:** *Lab data vs field data?* Lab (Lighthouse) is a controlled, repeatable test on simulated slow hardware, which is good for comparing changes. Field data (CrUX, `web-vitals` in real browsers) shows what real users experience. Google ranks on field data.
 
-### 38. Removing an animation library
+### 41. Removing an animation library
 
 The old site used three animation libraries (`framer-motion`, `motion`, `motion-plus`), a 296 KB SVG component with ~89 animated paths, and a full-screen page transition that blocked every navigation for 1–1.5s. The redesign removed all of it; every animation is CSS keyframes. Home page First Load JS is now ~113 kB, including the interactive gourd.
 
