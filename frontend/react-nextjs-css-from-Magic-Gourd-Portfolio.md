@@ -43,14 +43,15 @@
   33. Container query units (`cqw`)
   34. Tailwind v4: `@theme` tokens and `@layer`
   35. Sticky nav: `scroll-padding-top` and smooth scrolling
+  36. Scroll-driven animations (`animation-timeline: view()`)
 - [Browser APIs](#browser-apis)
-  36. Web Audio API: sounds without audio files
-  37. Restarting a CSS animation from JavaScript
+  37. Web Audio API: sounds without audio files
+  38. Restarting a CSS animation from JavaScript
 - [Web performance](#web-performance)
-  38. Core Web Vitals: LCP, CLS, INP
-  39. Layout shift from web fonts
-  40. Measuring before optimizing (Lighthouse, a fair comparison)
-  41. Removing an animation library
+  39. Core Web Vitals: LCP, CLS, INP
+  40. Layout shift from web fonts
+  41. Measuring before optimizing (Lighthouse, a fair comparison)
+  42. Removing an animation library
 
 ---
 
@@ -826,11 +827,39 @@ html {
 
 **Interview Q:** *Clicking `#contact` hides the heading under the sticky header. Fix?* `scroll-padding-top` on `html` (or `scroll-margin-top` on the targets), equal to the header height plus some space.
 
+### 36. Scroll-driven animations (`animation-timeline: view()`)
+
+A normal CSS animation runs on a clock (e.g. 0.5s). A scroll-driven animation runs on the **scroll position**: `view()` ties its progress to where the element is in the viewport, so scrolling forward plays it and scrolling back rewinds it. No JavaScript, no scroll listener, and the browser can run it off the main thread.
+
+```css
+/* globals.css: each section card fades and slides up as it scrolls into view */
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(20px); }
+}
+
+@supports (animation-timeline: view()) {               /* older browsers: cards just show */
+  @media (prefers-reduced-motion: no-preference) {
+    .page > main > section {
+      animation: reveal ease-out both;
+      animation-timeline: view();                       /* after the shorthand, which resets it */
+      animation-range: entry 0% entry 240px;            /* done once its top is 240px into the screen */
+    }
+  }
+}
+```
+
+- **`animation-range`** picks which part of the element's trip through the viewport plays the animation. `entry` is while it comes in from the bottom; `cover` is its whole trip, from first pixel in to last pixel out.
+- Gotcha I hit: the usual `entry 0% cover 30%` depends on the element's height. My Experience card is ~1,600px tall, so it was still half faded with its top almost under the nav. A fixed length (`entry 240px`) finishes at the same point for every card.
+- `both` (fill mode) keeps the end state for cards already scrolled past, so jumping down with a nav link never leaves a faded card above.
+- Progressive enhancement: `@supports` means unsupported browsers get the plain page, never hidden content.
+
+**Interview Q:** *Scroll-driven animations vs an `IntersectionObserver` reveal?* CSS: zero JS, follows the scroll exactly (also backwards), runs on the compositor; but newer browser support. `IntersectionObserver`: works everywhere and can trigger time-based animations once, but needs JS and care so content isn't hidden if the script fails.
+
 ---
 
 ## Browser APIs
 
-### 36. Web Audio API: sounds without audio files
+### 37. Web Audio API: sounds without audio files
 
 The open/close sounds are generated: an oscillator gliding in pitch, plus a burst of filtered noise, shaped by a volume envelope.
 
@@ -865,7 +894,7 @@ export const playOpen = () => play(cork, 0.67);   // timed to the lid coming off
 
 **Interview Q:** *Why might audio not play on page load?* Autoplay policies: an `AudioContext` created without a user gesture starts `suspended`. Create or `resume()` it in response to a click or key press.
 
-### 37. Restarting a CSS animation from JavaScript
+### 38. Restarting a CSS animation from JavaScript
 
 Setting the same `animation` value again does nothing. Remove it, force the browser to apply that, then put it back.
 
@@ -885,7 +914,7 @@ In React, changing the element's `key` (concept 5) does the same thing more decl
 
 ## Web performance
 
-### 38. Core Web Vitals: LCP, CLS, INP
+### 39. Core Web Vitals: LCP, CLS, INP
 
 | Metric | Measures | Good |
 |---|---|---|
@@ -899,7 +928,7 @@ Ways this project avoids CLS: the gourd sits in an `aspect-ratio` box (space res
 
 **Interview Q:** *What causes CLS, and how do you fix it?* Images/embeds without dimensions (set `width`/`height` or `aspect-ratio`), content inserted above existing content (reserve space), and web fonts changing text size (see next concept).
 
-### 39. Layout shift from web fonts
+### 40. Layout shift from web fonts
 
 Measured in this project: on phones the hero role pill is set in JetBrains Mono. Until that font loads, the fallback font is wider, so the roles wrap to two lines (pill 50px tall). When the real font arrives they fit on one line (34px), and the whole hero jumps up ~17px: CLS 0.12.
 
@@ -917,7 +946,7 @@ Fixes:
 
 **Interview Q:** *What is FOUT, and how do you prevent the shift it causes?* Flash Of Unstyled Text: the fallback shows first, then swaps to the web font. Prevent the jump with a matched fallback (`size-adjust`), preloading, and self-hosting (`next/font`).
 
-### 40. Measuring before optimizing (Lighthouse, a fair comparison)
+### 41. Measuring before optimizing (Lighthouse, a fair comparison)
 
 To check whether the new animations hurt performance, I compared two commits instead of guessing:
 
@@ -935,7 +964,7 @@ Lessons: compare like with like (same server, same throttling), repeat runs, and
 
 **Interview Q:** *Lab data vs field data?* Lab (Lighthouse) is a controlled, repeatable test on simulated slow hardware, which is good for comparing changes. Field data (CrUX, `web-vitals` in real browsers) shows what real users experience. Google ranks on field data.
 
-### 41. Removing an animation library
+### 42. Removing an animation library
 
 The old site used three animation libraries (`framer-motion`, `motion`, `motion-plus`), a 296 KB SVG component with ~89 animated paths, and a full-screen page transition that blocked every navigation for 1–1.5s. The redesign removed all of it; every animation is CSS keyframes. Home page First Load JS is now ~113 kB, including the interactive gourd.
 
