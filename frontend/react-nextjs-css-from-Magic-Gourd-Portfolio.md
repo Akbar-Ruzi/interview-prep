@@ -34,24 +34,32 @@
   25. `next/link` vs a plain `<a>` (and `usePathname`)
   26. Layouts persist across navigations, pages remount
   27. Hydration mismatches and `suppressHydrationWarning`
+- [CSS layout and modern CSS](#css-layout-and-modern-css)
+  28. Fluid sizes with `clamp()`, `min()` and `max()`
+  29. CSS Grid: `minmax(0, 1fr)` and `min-width: 0`
+  30. Stacking contexts: `z-index` and `isolation: isolate`
+  31. `:has()`: a parent selector
+  32. Entry animations with `@starting-style` (and `:empty`)
+  33. Safe-area insets on notched phones: `env(safe-area-inset-*)`
+  34. Readable text: `text-wrap: balance` and `ch` widths
 - [CSS and animation](#css-and-animation)
-  28. Animate only `transform` and `opacity`
-  29. CSS custom properties per element: staggered animations
-  30. Playing a keyframe animation in reverse
-  31. `prefers-reduced-motion`
-  32. `transform-box: fill-box` for SVG transforms
-  33. Container query units (`cqw`)
-  34. Tailwind v4: `@theme` tokens and `@layer`
-  35. Sticky nav: `scroll-padding-top` and smooth scrolling
-  36. Scroll-driven animations (`animation-timeline: view()`)
+  35. Animate only `transform` and `opacity`
+  36. CSS custom properties per element: staggered animations
+  37. Playing a keyframe animation in reverse
+  38. `prefers-reduced-motion`
+  39. `transform-box: fill-box` for SVG transforms
+  40. Container query units (`cqw`)
+  41. Tailwind v4: `@theme` tokens and `@layer`
+  42. Sticky nav: `scroll-padding-top` and smooth scrolling
+  43. Scroll-driven animations (`animation-timeline: view()`)
 - [Browser APIs](#browser-apis)
-  37. Web Audio API: sounds without audio files
-  38. Restarting a CSS animation from JavaScript
+  44. Web Audio API: sounds without audio files
+  45. Restarting a CSS animation from JavaScript
 - [Web performance](#web-performance)
-  39. Core Web Vitals: LCP, CLS, INP
-  40. Layout shift from web fonts
-  41. Measuring before optimizing (Lighthouse, a fair comparison)
-  42. Removing an animation library
+  46. Core Web Vitals: LCP, CLS, INP
+  47. Layout shift from web fonts
+  48. Measuring before optimizing (Lighthouse, a fair comparison)
+  49. Removing an animation library
 
 ---
 
@@ -676,9 +684,152 @@ Two cases in this project:
 
 ---
 
+## CSS layout and modern CSS
+
+### 28. Fluid sizes with `clamp()`, `min()` and `max()`
+
+`clamp(MIN, PREFERRED, MAX)` picks the preferred value (usually viewport-based) but never goes below MIN or above MAX. One line replaces a stack of media queries, and sizes grow smoothly instead of jumping at breakpoints.
+
+```css
+/* globals.css: gap around the cards and their inner padding, 16px on phones up to 48/56px on desktop */
+:root {
+  --outer: clamp(16px, 4vw, 48px);
+  --inner: clamp(16px, 4vw, 56px);
+}
+/* never closer to the edge than the notch (see safe-area insets below) */
+body { padding-left: max(var(--outer), env(safe-area-inset-left, 0px)); }
+```
+
+```jsx
+// Hero.jsx: the big heading scales from 40px to 76px
+<h1 className="text-[clamp(40px,7vw,76px)] font-extrabold">…</h1>
+// Dialog.jsx: 440px wide, but always 16px from each screen edge on small phones
+<dialog className="w-[min(100%-32px,440px)]">…</dialog>
+```
+
+- `min(a, b)` = "at most": the smaller wins. `max(a, b)` = "at least": the bigger wins.
+- Accessibility: a font size in pure `vw` doesn't grow when the user zooms text. Keep a `px`/`rem` part (or the MIN/MAX bounds) in it.
+
+**Interview Q:** *How do you do fluid typography?* `clamp()` with a viewport-based middle value and readable min/max bounds; better with `rem` bounds so it respects the user's font size setting.
+
+### 29. CSS Grid: `minmax(0, 1fr)` and `min-width: 0`
+
+`1fr` really means `minmax(auto, 1fr)`: a column never gets narrower than its content's minimum width. One long word, URL or code line can push the column wider and cause horizontal scroll. `minmax(0, 1fr)` lets the column shrink.
+
+```jsx
+// Contact.jsx: intro | form, 0.9 : 1.1, stacked below 1024px
+<div className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] max-lg:grid-cols-1">
+
+// Experience.jsx: one job row changes shape with the screen
+//   desktop: [org + date] [48px timeline] [role + bullets]
+//   tablet:  [36px timeline] [everything else]       phone: one column, white card
+<li className="grid grid-cols-[minmax(0,260px)_48px_minmax(0,1fr)]
+               max-lg:grid-cols-[36px_minmax(0,1fr)] max-sm:grid-cols-1">
+```
+
+The same problem exists for grid and flex **items**: they default to `min-width: auto`. That's why the form card also has `min-w-0`.
+
+**Interview Q:** *My grid column overflows even though it's `1fr`. Why?* The implicit minimum is the content's min-content width. Use `minmax(0, 1fr)`, or `min-width: 0` (`overflow: hidden` also works) on the item.
+
+### 30. Stacking contexts: `z-index` and `isolation: isolate`
+
+`z-index` only compares elements **inside the same stacking context**. A new context starts on an element with `position` + `z-index`, `opacity` below 1, any `transform`, `filter`, or `isolation: isolate`. Children can never escape their parent's context, however big their `z-index`.
+
+```jsx
+// Hero.jsx: the faint watermark sits BEHIND the hero text (-z-10) but must not fall behind
+// the hero's own background. isolate makes the text column its own stacking context,
+// so -z-10 means "bottom of this box", not "bottom of the page"
+<div className="relative isolate grid">
+  <h1>…</h1>
+  <span aria-hidden="true" className="pointer-events-none absolute bottom-[-.1em] -z-10 text-fg/5">
+    {heroData.watermark}
+  </span>
+</div>
+```
+
+In this project: the sticky nav is `z-50`; the page-transition progress bar is `z-index: 100` so it's above the nav; and since the scroll reveal and page transitions put `transform` on sections, each section becomes its own stacking context (fine here, because nothing inside them needs to overlap the nav).
+
+**Interview Q:** *I set `z-index: 9999` and it's still behind. Why?* An ancestor created a stacking context with a lower order (often a `transform` or `opacity`), and the element can't leave it. Fix the ancestor's stacking, or use `isolation: isolate` deliberately to contain a local `z-index`.
+
+### 31. `:has()`: a parent selector
+
+For years CSS could only style an element based on what's **above** it. `:has()` styles an element based on what's **inside** (or after) it.
+
+```css
+/* globals.css: stop the page scrolling behind an open modal, without JavaScript */
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+```
+
+Other common uses: `form:has(:invalid)` to style the whole form, `.card:has(img)` for cards with an image, `label:has(input:checked)`.
+
+**Interview Q:** *What did you need JavaScript for before `:has()`?* Toggling a class on a parent when a child changed state (an open modal, a checked box, a focused field). Now CSS can watch it directly.
+
+### 32. Entry animations with `@starting-style` (and `:empty`)
+
+A CSS transition needs a "before" value, but an element that has just appeared (or switched from `display: none`) has none, so it pops in. `@starting-style` gives it one: the styles it transitions **from** on its first frame. Tailwind's `starting:` variant writes it.
+
+```jsx
+// Dialog.jsx: the modal fades and grows in when opened (scale .95 → 1, opacity 0 → 1)
+<dialog className="scale-95 opacity-0 transition duration-200
+                   open:scale-100 open:opacity-100
+                   starting:open:scale-95 starting:open:opacity-0">
+
+// Contact.jsx: the status line is hidden while empty, and fades/slides in when text appears
+<p role="status" className="transition duration-300 empty:hidden starting:translate-y-1 starting:opacity-0">
+```
+
+- `:empty` matches an element with no children (not even text), so the status box takes no space until there's a message.
+- Older browsers just skip the animation; the content still appears.
+
+**Interview Q:** *Why doesn't my transition run when an element goes from `display: none` to `block`?* There's no rendered "before" state to transition from. Use `@starting-style` (plus `transition-behavior: allow-discrete` if you also animate `display`), or animate with `@keyframes`.
+
+### 33. Safe-area insets on notched phones: `env(safe-area-inset-*)`
+
+On phones with a notch or rounded corners, `env(safe-area-inset-top/left/right/bottom)` gives the space the hardware covers (in landscape the notch is on a side). The second argument is the fallback for browsers and devices without it.
+
+```css
+/* globals.css: side padding is at least --outer, more if the notch needs it */
+body {
+  padding-left: max(var(--outer), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--outer), env(safe-area-inset-right, 0px));
+}
+/* the yellow strip above the sticky nav covers the status bar area too */
+body::before { height: calc(env(safe-area-inset-top, 0px) + 10px); }
+```
+
+```jsx
+// Navbar.jsx: the sticky nav stops 10px below the notch
+<nav className="sticky top-[calc(env(safe-area-inset-top,0px)+10px)] z-50">
+```
+
+The insets are only non-zero when the page opts into drawing under the notch (`viewport-fit=cover` in the viewport meta). This site doesn't set it yet, so today the `0px` fallbacks apply and the browser keeps the page clear of the notch itself; the CSS is ready if it ever does.
+
+**Interview Q:** *How do you keep content clear of the notch?* `env(safe-area-inset-*)` in padding and positions, usually inside `max()` with your normal spacing.
+
+### 34. Readable text: `text-wrap: balance` and `ch` widths
+
+```css
+/* globals.css: headings balance their lines (no single word left alone on the last line) */
+h1, h2, h3 { text-wrap: balance; }
+```
+
+```jsx
+// About.jsx: paragraphs stop at ~62 characters per line, however wide the card is
+<p className="max-w-[62ch]">…</p>
+```
+
+- `text-wrap: balance` makes the lines of a short block about equal length. It's meant for headings and short text (browsers limit it to a few lines). For paragraphs, `text-wrap: pretty` only avoids a lonely last word.
+- `ch` is the width of the "0" character in the current font, so `62ch` is roughly 60–75 characters per line, the comfortable reading range.
+
+**Interview Q:** *Why limit line length?* Very long lines make it hard for the eye to find the start of the next line; about 45–75 characters reads best. `max-width` in `ch` keeps that true at any screen size and font size.
+
+---
+
 ## CSS and animation
 
-### 28. Animate only `transform` and `opacity`
+### 35. Animate only `transform` and `opacity`
 
 The browser renders in steps: style → layout → paint → composite. Changing `width`, `top` or `margin` re-runs layout for the page. `transform` and `opacity` can be handled by the compositor (often the GPU) alone, so they stay smooth at 60fps and cause no layout shift.
 
@@ -692,7 +843,7 @@ The browser renders in steps: style → layout → paint → composite. Changing
 
 **Interview Q:** *Why is animating `left` slower than `transform: translateX`?* `left` triggers layout and paint on every frame; `transform` only composites an already-painted layer.
 
-### 29. CSS custom properties per element: staggered animations
+### 36. CSS custom properties per element: staggered animations
 
 One keyframe rule for all chips; each element passes its own start offset and delay as CSS variables.
 
@@ -711,7 +862,7 @@ const fly = (dx, dy, d) => ({ "--dx": `${dx}px`, "--dy": `${dy}px`, "--d": `${d}
 
 **Interview Q:** *How do you pass a value from React to CSS?* A CSS custom property in `style` (`style={{ "--x": value }}`), then use `var(--x)` in CSS. Better than inline `transform` strings: the animation logic stays in CSS.
 
-### 30. Playing a keyframe animation in reverse
+### 37. Playing a keyframe animation in reverse
 
 Closing the gourd reuses the opening keyframes with `animation-direction: reverse`. The delays are mirrored with `calc()`, so the last item out goes back in first.
 
@@ -727,7 +878,7 @@ Closing the gourd reuses the opening keyframes with `animation-direction: revers
 
 **Interview Q:** *What does `animation-fill-mode: both` do?* Applies the starting keyframe during the delay (`backwards`) and keeps the end keyframe after the animation (`forwards`).
 
-### 31. `prefers-reduced-motion`
+### 38. `prefers-reduced-motion`
 
 Some users get dizzy or nauseous from motion (vestibular disorders) and turn on "Reduce motion" in their OS. Respect it.
 
@@ -758,7 +909,7 @@ In this project reduced motion doesn't remove features: the gourd shows open wit
 
 **Interview Q:** *Remove all animation, or reduce it?* Reduce: keep the content and meaning, drop large movement, parallax, auto-playing loops and smooth scrolling. Short fades are usually fine.
 
-### 32. `transform-box: fill-box` for SVG transforms
+### 39. `transform-box: fill-box` for SVG transforms
 
 In SVG, `transform-origin` is measured from the SVG's own top-left corner by default, so `rotate()` on a small shape swings it around the whole drawing. `transform-box: fill-box` makes percentages refer to the shape's own bounding box.
 
@@ -775,7 +926,7 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 
 **Interview Q:** *Why does my SVG element rotate around the wrong point?* Its transform origin is in SVG user space (the viewport's top-left). Set `transform-box: fill-box` and a `transform-origin` relative to the element.
 
-### 33. Container query units (`cqw`)
+### 40. Container query units (`cqw`)
 
 `100vw` is the window width; the caravan walks across a card that is narrower than the window on wide screens. With `container-type: inline-size`, `100cqw` is the width of the element itself.
 
@@ -790,7 +941,7 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 
 **Interview Q:** *Media queries vs container queries?* Media queries react to the viewport; container queries react to a parent's size, so a component adapts wherever it's placed (sidebar, grid cell, full width).
 
-### 34. Tailwind v4: `@theme` tokens and `@layer`
+### 41. Tailwind v4: `@theme` tokens and `@layer`
 
 ```css
 @import "tailwindcss";
@@ -814,7 +965,7 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 
 **Interview Q:** *Why use cascade layers?* To control priority between groups of CSS (reset → base → components → utilities) without specificity wars or `!important`.
 
-### 35. Sticky nav: `scroll-padding-top` and smooth scrolling
+### 42. Sticky nav: `scroll-padding-top` and smooth scrolling
 
 ```css
 html {
@@ -827,7 +978,7 @@ html {
 
 **Interview Q:** *Clicking `#contact` hides the heading under the sticky header. Fix?* `scroll-padding-top` on `html` (or `scroll-margin-top` on the targets), equal to the header height plus some space.
 
-### 36. Scroll-driven animations (`animation-timeline: view()`)
+### 43. Scroll-driven animations (`animation-timeline: view()`)
 
 A normal CSS animation runs on a clock (e.g. 0.5s). A scroll-driven animation runs on the **scroll position**: `view()` ties its progress to where the element is in the viewport, so scrolling forward plays it and scrolling back rewinds it. No JavaScript, no scroll listener, and the browser can run it off the main thread.
 
@@ -859,7 +1010,7 @@ A normal CSS animation runs on a clock (e.g. 0.5s). A scroll-driven animation ru
 
 ## Browser APIs
 
-### 37. Web Audio API: sounds without audio files
+### 44. Web Audio API: sounds without audio files
 
 The open/close sounds are generated: an oscillator gliding in pitch, plus a burst of filtered noise, shaped by a volume envelope.
 
@@ -894,7 +1045,7 @@ export const playOpen = () => play(cork, 0.67);   // timed to the lid coming off
 
 **Interview Q:** *Why might audio not play on page load?* Autoplay policies: an `AudioContext` created without a user gesture starts `suspended`. Create or `resume()` it in response to a click or key press.
 
-### 38. Restarting a CSS animation from JavaScript
+### 45. Restarting a CSS animation from JavaScript
 
 Setting the same `animation` value again does nothing. Remove it, force the browser to apply that, then put it back.
 
@@ -914,7 +1065,7 @@ In React, changing the element's `key` (concept 5) does the same thing more decl
 
 ## Web performance
 
-### 39. Core Web Vitals: LCP, CLS, INP
+### 46. Core Web Vitals: LCP, CLS, INP
 
 | Metric | Measures | Good |
 |---|---|---|
@@ -928,7 +1079,7 @@ Ways this project avoids CLS: the gourd sits in an `aspect-ratio` box (space res
 
 **Interview Q:** *What causes CLS, and how do you fix it?* Images/embeds without dimensions (set `width`/`height` or `aspect-ratio`), content inserted above existing content (reserve space), and web fonts changing text size (see next concept).
 
-### 40. Layout shift from web fonts
+### 47. Layout shift from web fonts
 
 Measured in this project: on phones the hero role pill is set in JetBrains Mono. Until that font loads, the fallback font is wider, so the roles wrap to two lines (pill 50px tall). When the real font arrives they fit on one line (34px), and the whole hero jumps up ~17px: CLS 0.12.
 
@@ -946,7 +1097,7 @@ Fixes:
 
 **Interview Q:** *What is FOUT, and how do you prevent the shift it causes?* Flash Of Unstyled Text: the fallback shows first, then swaps to the web font. Prevent the jump with a matched fallback (`size-adjust`), preloading, and self-hosting (`next/font`).
 
-### 41. Measuring before optimizing (Lighthouse, a fair comparison)
+### 48. Measuring before optimizing (Lighthouse, a fair comparison)
 
 To check whether the new animations hurt performance, I compared two commits instead of guessing:
 
@@ -964,7 +1115,7 @@ Lessons: compare like with like (same server, same throttling), repeat runs, and
 
 **Interview Q:** *Lab data vs field data?* Lab (Lighthouse) is a controlled, repeatable test on simulated slow hardware, which is good for comparing changes. Field data (CrUX, `web-vitals` in real browsers) shows what real users experience. Google ranks on field data.
 
-### 42. Removing an animation library
+### 49. Removing an animation library
 
 The old site used three animation libraries (`framer-motion`, `motion`, `motion-plus`), a 296 KB SVG component with ~89 animated paths, and a full-screen page transition that blocked every navigation for 1–1.5s. The redesign removed all of it; every animation is CSS keyframes. Home page First Load JS is now ~113 kB, including the interactive gourd.
 
