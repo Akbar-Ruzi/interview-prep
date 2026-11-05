@@ -6,10 +6,10 @@ Personal interview prep notes: key concepts in TypeScript, React, Next.js, Pytho
 
 | Subject | Notes |
 |---|---|
-| Frontend | [TypeScript, React, Next.js (Talent Pipeline Tracker)](frontend/typescript-react-nextjs-from-Talent-Pipeline-Tracker.md)<br>[React, Next.js, CSS animation, web performance (Magic Gourd portfolio)](frontend/react-nextjs-css-from-Magic-Gourd-Portfolio.md) |
+| Frontend | [TypeScript, React, Next.js (Talent Pipeline Tracker)](frontend/typescript-react-nextjs-from-Talent-Pipeline-Tracker.md)<br>[React, Next.js, CSS animation, web performance (Magic Gourd portfolio)](frontend/react-nextjs-css-from-Magic-Gourd-Portfolio.md)<br>[Next.js full stack, auth, MongoDB (StackMeet)](frontend/nextjs-auth-mongoose-from-StackMeet.md) |
 | Python | *Coming soon* |
 | AI | *Coming soon* |
-| Databases | *Coming soon* |
+| Databases | [MongoDB and Mongoose (StackMeet)](frontend/nextjs-auth-mongoose-from-StackMeet.md#mongodb-and-mongoose) |
 | Data Engineering | [Telemetry design (HealthCore Telemetry Plan)](data-engineering/telemetry-design-from-HealthCore-Telemetry-Plan.md) |
 
 ## Format
