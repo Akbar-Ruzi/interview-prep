@@ -11,7 +11,6 @@
   1. Route Handlers and HTTP status codes
   2. Server Actions and returning a result object
   3. Uploading a file: wrapping a callback API in a Promise
-- [Questions I asked about my code](#questions-i-asked-about-my-code)
   4. Constants in a `'use server'` file
 
 ---
@@ -105,13 +104,7 @@ const uploadResult = await new Promise<CloudinaryUploadResult>((resolve, reject)
 
 **Interview Q:** *How do you turn a callback API into a Promise?* Wrap it in `new Promise`, call `reject` on an error and `resolve` on success. `util.promisify` does this for standard Node-style callbacks.
 
----
-
-## Questions I asked about my code
-
 ### 4. Constants in a `'use server'` file
-
-*My question about these constants: "are they going to be used somewhere?"*
 
 ```ts
 // lib/actions/booking.action.ts

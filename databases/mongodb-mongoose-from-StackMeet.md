@@ -17,11 +17,10 @@
   7. A unique index beats "check, then insert"
   8. Atomic updates: enforcing a limit under parallel requests
   9. `.lean()`
+  10. `userId?`: an optional field in the type and the schema
+  11. `createBooking`: where the data actually gets saved
 - [Project decisions](#project-decisions)
-  10. Protecting a free database: why one limit isn't enough
-- [Questions I asked about my code](#questions-i-asked-about-my-code)
-  11. `userId?`: an optional field in the type and the schema
-  12. `createBooking`: where the data actually gets saved
+  12. Protecting a free database: why one limit isn't enough
 
 ---
 
@@ -299,39 +298,7 @@ const event = await Event.findOne({ slug: sanitizedSlug }).lean();
 
 **Interview Q:** *When shouldn't you use `.lean()`?* When you need to change and `save()` the document, or when you rely on virtuals, getters or document methods.
 
----
-
-## Project decisions
-
-These came from questions I asked while building StackMeet.
-
-### 10. Protecting a free database: why one limit isn't enough
-
-My first idea was to limit events per user, so a public site couldn't push my free MongoDB plan over its storage limit. That alone doesn't work, because sign-up has no email verification and one person can create many accounts. The real protection is a set of limits that covers each way data can grow.
-
-| Limit (planned) | Value | What it protects against |
-|---|---|---|
-| Events per user | 3 | One account filling the site |
-| Total events | 100 | Many fake accounts, because it holds however many accounts exist |
-| Bookings per event | 200 | Guests booking with made-up emails |
-| Upcoming events per email | 3 | One email holding many spots |
-| Cover image size | 2 MB | Uploads using up image storage |
-
-Together these cap the site at 100 x 200 = 20,000 bookings, so storage has a known upper limit.
-
-**Only upcoming events count toward the per-email limit.** If past events counted, someone who attended 3 events could never book again.
-
-**Limits don't stop everything.** Someone could still fill an event's 200 spots with fake emails, and a per-email limit won't help because they can keep changing the address. That needs rate limiting or email verification, which are planned for after the prototype.
-
-**Interview Q:** *How would you stop users from running up your costs on a public app?* Find every way data can grow and cap each one, including a global cap that doesn't depend on user identity, because accounts are cheap to create. Then add rate limiting and email verification, and set up billing alerts or a free tier that can't charge you.
-
----
-
-## Questions I asked about my code
-
-### 11. `userId?`: an optional field in the type and the schema
-
-*My question: "why is userId optional in type?"*
+### 10. `userId?`: an optional field in the type and the schema
 
 ```ts
 // database/booking.model.ts
@@ -356,9 +323,7 @@ The type and the schema have to agree, because they do different jobs. The `?` o
 
 **Interview Q:** *What's the difference between `userId?: string` and `userId: string | undefined`?* With `?`, the property can be left out entirely. With `| undefined`, the property must be present, although its value can be `undefined`.
 
-### 12. `createBooking`: where the data actually gets saved
-
-*My question: "explain createBooking, where is saving data happening?"*
+### 11. `createBooking`: where the data actually gets saved
 
 The save is the `Booking.create()` call. Everything before it makes sure the data is safe to save.
 
@@ -406,3 +371,29 @@ export const createBooking = async ({ eventId, email, name, phone }: CreateBooki
 **Interview Q:** *Why get `userId` from `auth()` instead of passing it from the form?* A Server Action is a public endpoint, so a caller could send any ID they like. The session is checked on the server, so it can't be faked that way.
 
 **Interview Q:** *Why is `e` typed as `unknown` in a `catch` block?* Anything can be thrown in JavaScript, not just an `Error`, so you have to check its shape before reading a property like `code`. That's what the `typeof` and `'code' in e` checks do. In strict TypeScript projects, `catch` variables default to `unknown`.
+
+---
+
+## Project decisions
+
+These came from questions I asked while building StackMeet.
+
+### 12. Protecting a free database: why one limit isn't enough
+
+My first idea was to limit events per user, so a public site couldn't push my free MongoDB plan over its storage limit. That alone doesn't work, because sign-up has no email verification and one person can create many accounts. The real protection is a set of limits that covers each way data can grow.
+
+| Limit (planned) | Value | What it protects against |
+|---|---|---|
+| Events per user | 3 | One account filling the site |
+| Total events | 100 | Many fake accounts, because it holds however many accounts exist |
+| Bookings per event | 200 | Guests booking with made-up emails |
+| Upcoming events per email | 3 | One email holding many spots |
+| Cover image size | 2 MB | Uploads using up image storage |
+
+Together these cap the site at 100 x 200 = 20,000 bookings, so storage has a known upper limit.
+
+**Only upcoming events count toward the per-email limit.** If past events counted, someone who attended 3 events could never book again.
+
+**Limits don't stop everything.** Someone could still fill an event's 200 spots with fake emails, and a per-email limit won't help because they can keep changing the address. That needs rate limiting or email verification, which are planned for after the prototype.
+
+**Interview Q:** *How would you stop users from running up your costs on a public app?* Find every way data can grow and cap each one, including a global cap that doesn't depend on user identity, because accounts are cheap to create. Then add rate limiting and email verification, and set up billing alerts or a free tier that can't charge you.
