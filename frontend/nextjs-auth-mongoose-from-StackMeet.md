@@ -36,6 +36,11 @@
   24. `.env.example` and un-ignoring a file in `.gitignore`
   25. shadcn/ui: copied code, not a dependency
   26. Git: uncommitted changes and branch prefixes
+- [Questions I asked about my code](#questions-i-asked-about-my-code)
+  27. `hiddenByUser`: hiding a record instead of deleting it
+  28. `userId?`: an optional field in the type and the schema
+  29. Constants in a `'use server'` file
+  30. `createBooking`: where the data actually gets saved
 
 ---
 
@@ -624,6 +629,12 @@ const EventDetailsPage = ({ params }: EventPageProps) => (
 
 **Trade-off I found by testing:** a missing event now shows the 404 page, but the response status is 200. The status is sent with the static shell, before `notFound()` runs during streaming.
 
+**Reading the fix line by line:**
+
+1. The page is no longer `async`, so it waits for nothing and Next.js can send it immediately. `params` is passed along still unresolved, as a Promise.
+2. `<Suspense>` sets the loading state, so visitors see "Loading event..." until the content is ready.
+3. `EventDetailsContent` does the slow work: it reads the slug and fetches the event. When it finishes, its content replaces the loading message.
+
 **Why it's worth having anyway:** without `Suspense`, visitors see nothing until all the data is ready. With it, the navbar and the fallback appear right away, and only the part inside the boundary waits. This applies in production too, because `next.config.ts` is used for both development and production, and the error stopped `npm run build`, so the site couldn't have been deployed.
 
 **Interview Q:** *Why use `<Suspense>` in a Server Component page?* To send the rest of the page immediately and stream the slow part in when it's ready. The `fallback` is what shows in the meantime, so one slow query doesn't hold up the whole page.
@@ -768,3 +779,135 @@ Prefixes like `feat/` are a naming convention that Git doesn't require. They sho
 | `docs/` | Documentation |
 
 **Interview Q:** *What does `git stash` do?* It saves your uncommitted changes and cleans the working folder, so you can switch branches and bring the changes back later with `git stash pop`.
+
+---
+
+## Questions I asked about my code
+
+### 27. `hiddenByUser`: hiding a record instead of deleting it
+
+*My question: "what is hiddenByUser?"*
+
+```ts
+// database/booking.model.ts
+hiddenByUser: {
+  type: Boolean,
+  default: false,
+},
+```
+
+It records whether someone removed a past event from their own "My events" list. The booking itself stays, so the organizer's attendance history stays correct. If 50 people booked and one removes it from their list, the event still shows 50 bookings.
+
+```ts
+// lib/actions/booking.action.ts
+// Bookings hidden with hiddenByUser still count, because those spots were still booked
+return await Booking.countDocuments({ eventId });
+```
+
+| Action | Applies to | `hiddenByUser` | Booking record |
+|---|---|---|---|
+| **Remove** | Past events | Set to `true` | Kept |
+| **Cancel spot** | Upcoming events | Not used | Deleted, which frees the spot |
+
+The field exists, but nothing sets it yet. The My events page will use it when it's built.
+
+**Interview Q:** *When would you hide a record instead of deleting it?* When other features still depend on it, such as history, reports or audit trails. The trade-off is that storage keeps growing, and every query that lists records for the user has to remember the filter.
+
+### 28. `userId?`: an optional field in the type and the schema
+
+*My question: "why is userId optional in type?"*
+
+```ts
+// database/booking.model.ts
+export interface IBooking extends Document {
+  userId?: Types.ObjectId; // Set when a signed-in user books; empty for guests
+  name: string;
+  email: string;
+}
+
+const BookingSchema = new Schema<IBooking>({
+  userId: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    index: true, // no `required`, unlike name and email
+  },
+});
+```
+
+Guests can book without an account, so they have no user ID. If `userId` were required, every guest booking would fail. The `?` also makes TypeScript remind you to handle the empty case wherever you use it.
+
+The type and the schema have to agree, because they do different jobs. The `?` only exists at compile time, while the missing `required` rule is what allows an empty value at runtime.
+
+**Interview Q:** *What's the difference between `userId?: string` and `userId: string | undefined`?* With `?`, the property can be left out entirely. With `| undefined`, the property must be present, although its value can be `undefined`.
+
+### 29. Constants in a `'use server'` file
+
+*My question about these constants: "are they going to be used somewhere?"*
+
+```ts
+// lib/actions/booking.action.ts
+const MAX_NAME_LENGTH = 50;
+const MIN_PHONE_DIGITS = 7;
+const MAX_PHONE_DIGITS = 15;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\+?[\d\s().-]+$/;
+```
+
+They're used by `getValidationError` in the same file. Naming them keeps the rules in one place and explains what a bare `50` or `15` means.
+
+They can't be exported from this file, because a `'use server'` file can only export async functions. **Planned fix:** when the new booking form needs the same rules, move them into a small shared file that both the form and the server import.
+
+**Interview Q:** *Why can a `'use server'` file only export async functions?* Each export becomes a function the browser can call over the network, and a network call is always asynchronous. A plain value like a number or regex can't be called that way.
+
+**Interview Q:** *Why validate on both the client and the server?* Client validation gives fast feedback, but it's only for convenience, because anyone can skip it and call the server directly. Server validation is what actually protects the data.
+
+### 30. `createBooking`: where the data actually gets saved
+
+*My question: "explain createBooking, where is saving data happening?"*
+
+The save is the `Booking.create()` call. Everything before it makes sure the data is safe to save.
+
+```ts
+// lib/actions/booking.action.ts (shortened)
+export const createBooking = async ({ eventId, email, name, phone }: CreateBookingParams) => {
+  try {
+    // 1. Clean the input
+    const cleanName = cleanText(name);
+    const normalizedEmail = cleanText(email).toLowerCase();
+    const cleanPhone = cleanText(phone);
+
+    // 2. Validate it, and return a message the form can show
+    const validationError = getValidationError(cleanName, normalizedEmail, cleanPhone);
+    if (validationError) {
+      return { success: false, message: validationError } satisfies CreateBookingResult;
+    }
+
+    // 3. Connect to the database and find out who is booking
+    await connectDB();
+    const session = await auth();
+
+    // 4. Save: Mongoose checks the schema and runs the pre-save hook, then MongoDB stores it
+    await Booking.create({
+      eventId,
+      userId: session?.user?.id,
+      name: cleanName,
+      email: normalizedEmail,
+      phone: cleanPhone || undefined,
+    });
+    return { success: true } satisfies CreateBookingResult;
+  } catch (e) {
+    // 5. 11000 is MongoDB's duplicate key error, from the unique index on eventId + email
+    if (typeof e === 'object' && e !== null && 'code' in e && (e as { code?: number }).code === 11000) {
+      return { success: false, message: 'This email is already registered for this event.' } satisfies CreateBookingResult;
+    }
+    console.log('Create booking failed:', e);
+    return { success: false, message: 'Unable to create booking right now. Please try again.' } satisfies CreateBookingResult;
+  }
+};
+```
+
+`booking.action.ts` holds the booking functions that run on the server. The `'use server'` line lets the form call them directly, without an API route.
+
+**Interview Q:** *Why get `userId` from `auth()` instead of passing it from the form?* A Server Action is a public endpoint, so a caller could send any ID they like. The session is checked on the server, so it can't be faked that way.
+
+**Interview Q:** *Why is `e` typed as `unknown` in a `catch` block?* Anything can be thrown in JavaScript, not just an `Error`, so you have to check its shape before reading a property like `code`. That's what the `typeof` and `'code' in e` checks do. In strict TypeScript projects, `catch` variables default to `unknown`.
