@@ -33,14 +33,10 @@
 - [Project decisions and tooling](#project-decisions-and-tooling)
   22. Protecting a free database: why one limit isn't enough
   23. Guest bookings: an unverified email doesn't prove ownership
-  24. `.env.example` and un-ignoring a file in `.gitignore`
-  25. shadcn/ui: copied code, not a dependency
-  26. Git: uncommitted changes and branch prefixes
 - [Questions I asked about my code](#questions-i-asked-about-my-code)
-  27. `hiddenByUser`: hiding a record instead of deleting it
-  28. `userId?`: an optional field in the type and the schema
-  29. Constants in a `'use server'` file
-  30. `createBooking`: where the data actually gets saved
+  24. `userId?`: an optional field in the type and the schema
+  25. Constants in a `'use server'` file
+  26. `createBooking`: where the data actually gets saved
 
 ---
 
@@ -723,97 +719,11 @@ I asked how a guest could see their booking later. It seems natural to show it o
 
 **Interview Q:** *A user signs up with an email that already has guest orders. Should you link them automatically?* Only after verifying the email. Otherwise, signing up with someone else's address gives access to their data.
 
-### 24. `.env.example` and un-ignoring a file in `.gitignore`
-
-`.env` holds real secrets and must never be committed. `.env.example` is committed with placeholder values, so anyone who clones the repo can see which settings the app needs.
-
-```gitignore
-# .gitignore
-.env*
-!.env.example
-```
-
-`.env*` also matches `.env.example`, so the file would stay off GitHub without the second line. A `!` pattern re-includes a file, and when several patterns match, the last one wins, so the order matters.
-
-```bash
-# .env.example
-MONGODB_URI=your_connection_string
-AUTH_SECRET=your_secret
-NEXT_PUBLIC_POSTHOG_KEY=your_key
-```
-
-**Interview Q:** *What does the `NEXT_PUBLIC_` prefix do?* It puts the value into the browser bundle, so anyone can read it. Use it only for values that are safe to expose, and keep database URLs and auth secrets unprefixed so they stay on the server.
-
-**Interview Q:** *You committed a secret by accident. Is deleting it in a new commit enough?* No, it's still in the Git history. Rotate the secret first, then clean the history if needed.
-
-### 25. shadcn/ui: copied code, not a dependency
-
-I asked whether I needed shadcn/ui, and I didn't. It isn't a normal component library: its command copies each component's source into your project, so you own the code and can restyle it.
-
-```bash
-npx shadcn@latest add alert-dialog sheet
-```
-
-StackMeet doesn't use it. The design is already distinctive and most of the UI is simple, so the site uses Tailwind. The delete and cancel popups use the native `<dialog>` element instead, which handles much of the keyboard and focus behavior that's easy to get wrong.
-
-**Interview Q:** *When would you use a UI library rather than build it yourself?* For components with hard accessibility behavior, such as dialogs and menus. Simple things like cards and buttons rarely need one, and every extra library is more code to maintain.
-
-### 26. Git: uncommitted changes and branch prefixes
-
-Creating a branch doesn't require a commit first. Uncommitted changes aren't tied to a branch, so they stay in your working folder and come with you.
-
-```bash
-git switch -c feat/site-redesign   # uncommitted changes come along
-git status                         # they still show as changed
-```
-
-Committing on the new branch leaves `main` unchanged until you merge. Switching to an existing branch is different: Git refuses if that switch would overwrite your uncommitted changes, so you commit or stash them first.
-
-Prefixes like `feat/` are a naming convention that Git doesn't require. They show what kind of work a branch contains.
-
-| Prefix | Used for |
-|---|---|
-| `feat/` | New features or redesigns |
-| `fix/` | Bug fixes |
-| `chore/` | Maintenance, like renames or config |
-| `docs/` | Documentation |
-
-**Interview Q:** *What does `git stash` do?* It saves your uncommitted changes and cleans the working folder, so you can switch branches and bring the changes back later with `git stash pop`.
-
 ---
 
 ## Questions I asked about my code
 
-### 27. `hiddenByUser`: hiding a record instead of deleting it
-
-*My question: "what is hiddenByUser?"*
-
-```ts
-// database/booking.model.ts
-hiddenByUser: {
-  type: Boolean,
-  default: false,
-},
-```
-
-It records whether someone removed a past event from their own "My events" list. The booking itself stays, so the organizer's attendance history stays correct. If 50 people booked and one removes it from their list, the event still shows 50 bookings.
-
-```ts
-// lib/actions/booking.action.ts
-// Bookings hidden with hiddenByUser still count, because those spots were still booked
-return await Booking.countDocuments({ eventId });
-```
-
-| Action | Applies to | `hiddenByUser` | Booking record |
-|---|---|---|---|
-| **Remove** | Past events | Set to `true` | Kept |
-| **Cancel spot** | Upcoming events | Not used | Deleted, which frees the spot |
-
-The field exists, but nothing sets it yet. The My events page will use it when it's built.
-
-**Interview Q:** *When would you hide a record instead of deleting it?* When other features still depend on it, such as history, reports or audit trails. The trade-off is that storage keeps growing, and every query that lists records for the user has to remember the filter.
-
-### 28. `userId?`: an optional field in the type and the schema
+### 24. `userId?`: an optional field in the type and the schema
 
 *My question: "why is userId optional in type?"*
 
@@ -840,7 +750,7 @@ The type and the schema have to agree, because they do different jobs. The `?` o
 
 **Interview Q:** *What's the difference between `userId?: string` and `userId: string | undefined`?* With `?`, the property can be left out entirely. With `| undefined`, the property must be present, although its value can be `undefined`.
 
-### 29. Constants in a `'use server'` file
+### 25. Constants in a `'use server'` file
 
 *My question about these constants: "are they going to be used somewhere?"*
 
@@ -861,7 +771,7 @@ They can't be exported from this file, because a `'use server'` file can only ex
 
 **Interview Q:** *Why validate on both the client and the server?* Client validation gives fast feedback, but it's only for convenience, because anyone can skip it and call the server directly. Server validation is what actually protects the data.
 
-### 30. `createBooking`: where the data actually gets saved
+### 26. `createBooking`: where the data actually gets saved
 
 *My question: "explain createBooking, where is saving data happening?"*
 
