@@ -32,10 +32,15 @@ MongoDB doesn't enforce a structure by default, so a Mongoose schema adds one at
 
 ```ts
 // database/event.model.ts
+export interface AgendaItem {
+  time: string;
+  item: string;
+}
+
 export interface EventFields {
   title: string;
-  mode: 'online' | 'offline' | 'hybrid';
-  agenda: string[];
+  mode: 'online' | 'in-person' | 'hybrid';
+  agenda?: AgendaItem[];
   // ...
 }
 
@@ -58,17 +63,29 @@ const EventSchema = new Schema<IEvent>(
       type: String,
       required: [true, 'Mode is required'],
       enum: {
-        values: ['online', 'offline', 'hybrid'],
-        message: 'Mode must be either online, offline, or hybrid',
+        values: ['online', 'in-person', 'hybrid'],
+        message: 'Mode must be either online, in-person, or hybrid',
       },
     },
     agenda: {
+      type: [
+        {
+          _id: false,
+          time: {
+            type: String,
+            required: [true, 'Agenda item time is required'],
+            trim: true,
+          },
+          item: {
+            type: String,
+            required: [true, 'Agenda item text is required'],
+            trim: true,
+          },
+        },
+      ],
+    },
+    tags: {
       type: [String],
-      required: [true, 'Agenda is required'],
-      validate: {
-        validator: (v: string[]) => v.length > 0,
-        message: 'At least one agenda item is required',
-      },
     },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   },
@@ -76,11 +93,52 @@ const EventSchema = new Schema<IEvent>(
 );
 ```
 
-- `required` on an array isn't enough, because an empty array still passes. That's why `agenda` has a custom validator.
+- `agenda` is optional, so it has no rule for the whole list. If it had to contain at least one item, `required` wouldn't be enough, because an empty array still passes. It would need a custom validator: `validate: { validator: (v: AgendaItem[]) => v.length > 0, message: 'At least one agenda item is required' }`.
+- `agenda` is a list of subdocuments: `type: [{ ... }]` means "a list of", and the object inside describes one item, such as `{ time: '10:00', item: 'Introduction' }`.
+- Mongoose gives every subdocument its own `_id` by default. `_id: false` turns that off, because agenda items are never looked up on their own.
+- Rules inside the object apply to each item, while rules beside `type`, such as a `validate`, would apply to the whole list. A missing time in the first item fails at the path `agenda.0.time`, so the error points to the exact item.
+- `trim: true` removes extra spaces when the value is set, so `' 10:00 '` is saved as `'10:00'`.
+- `tags` has `type: [String]`, which means a list of strings. It has no other rules, so it's optional, and Mongoose stores `[]` when it's left out. The short form `tags: [String]` means the same thing. The longer form is only needed to add options like `validate`.
 - `ref: 'User'` enables `.populate()`. It doesn't create a foreign key, so MongoDB won't stop a reference to a deleted user.
 - Splitting `EventFields` from `IEvent` gives a plain data type for props, separate from the full database document.
+- `IEvent extends EventFields, Document` combines both types, because an interface can extend more than one. `IEvent` gets the event fields, plus Mongoose members such as `_id` and `save()`.
+- `Document` here is imported from `mongoose`. It isn't the browser's DOM `Document`.
+- The interface only describes the shape and is removed at compile time. `timestamps: true` is what actually sets `createdAt` and `updatedAt`.
+- `enum` limits a string field to a fixed list. `values` is the list, and `message` is the error returned when a value isn't in it. A missing value passes `enum`, so `mode` also needs `required`.
+- The `mode` union type and the `enum` list look like duplicates, but the union checks your code at compile time, and `enum` checks real data at runtime. They must be kept in sync by hand here.
+
+**Conditional `required` with `this`:** `required` can take a function instead of `true`. Here, `venue` and `location` are required only when the event has a physical place.
+
+```ts
+// database/event.model.ts
+function needsPhysicalPlace(this: IEvent): boolean {
+  return this.mode === 'in-person' || this.mode === 'hybrid';
+}
+
+venue: {
+  type: String,
+  required: [needsPhysicalPlace, 'Venue is required for in-person and hybrid events'],
+  trim: true,
+},
+```
+
+- The function takes no real arguments. Mongoose calls it during validation with `this` set to the event being validated, so `this.mode` is that event's format.
+- `this: IEvent` is a TypeScript-only annotation that tells the compiler what `this` is. It must come first in the parameter list and is removed at compile time, so the function is called with no arguments.
+- It must be a regular function. An arrow function doesn't get its own `this`, and TypeScript doesn't allow a `this` parameter on one.
+
+**Interview Q:** *What is `this: IEvent` in a function's parameter list?* It's a fake parameter that only declares the type of `this`. Without it, TypeScript can't tell what `this` is, and `strict` mode reports an error. It doesn't exist in the compiled JavaScript.
+
+**Interview Q:** *Is `this` always the document in a Mongoose validator?* No. On `save()` and `create()` it's the document. With `findOneAndUpdate` and `runValidators: true`, `this` is the query, so `this.mode` is `undefined` and a rule like this one won't apply.
 
 **Interview Q:** *TypeScript already has types, so why do you need a schema?* TypeScript types are removed at compile time, so they can't check data that arrives at runtime, such as a request body. The schema does that check before anything is saved.
+
+**Interview Q:** *Is `extends Document` the recommended way to type a Mongoose model?* No. Mongoose's TypeScript docs recommend against it. They suggest a plain interface for the fields, such as `Schema<EventFields>`, and `HydratedDocument<EventFields>` where you need the full document type.
+
+**Interview Q:** *With `type: [String]`, what happens if you save `tags: [123]`?* It's saved as `['123']`, because Mongoose converts simple values to the schema's type before validating. Values it can't convert, such as an object or a nested array, fail validation.
+
+**Interview Q:** *What does `_id: false` do on a subdocument, and when would you use it?* It stops Mongoose adding an `_id` to each item in the list. Use it when items are only ever read as part of their parent. Keep the `_id` if you need to find, update or remove one specific item, such as a comment in a list of comments.
+
+**Interview Q:** *Does a Mongoose `enum` always stop invalid values?* No. It runs when Mongoose validates, such as on `save()` and `create()`. `findOneAndUpdate` skips it unless you pass `runValidators: true`, and MongoDB itself doesn't know about the rule, so a write that bypasses Mongoose isn't checked.
 
 ### 2. `models.X || model()`: avoiding `OverwriteModelError`
 
@@ -140,7 +198,7 @@ Middleware (hooks) runs logic automatically around an operation. This hook keeps
 ```ts
 // database/event.model.ts
 EventSchema.pre('save', function (next) {
-  if (this.isModified('title') || this.isNew) {
+  if (this.isNew) {
     this.slug = generateSlug(this.title);
   }
   if (this.isModified('date')) {
@@ -163,6 +221,25 @@ function generateSlug(title: string): string {
 - It uses a regular `function`, not an arrow function, because the hook needs `this` to be the document.
 - `isModified` avoids unnecessary work when the field didn't change.
 - **Design trade-off:** regenerating the slug when a title changes breaks links people have already shared. I decided to keep the original slug on edit.
+
+**Locking a field with `immutable`:** this option lets a field be set when the document is created, then ignores later changes to it.
+
+```ts
+// database/event.model.ts
+slug: {
+  type: String,
+  immutable: true,
+  unique: true,
+  lowercase: true,
+  trim: true,
+},
+```
+
+- A save hook alone can't protect the slug, because `findOneAndUpdate` skips save hooks. `immutable` also covers that path: Mongoose removes the field from the update before it reaches MongoDB.
+- By default, the change is ignored silently and no error is raised. A request that sets both `slug` and `title` still succeeds, and only `title` changes.
+- The rule lives in Mongoose, not MongoDB, so a write that bypasses Mongoose can still change the field.
+
+**Interview Q:** *What does `immutable: true` do in a Mongoose schema?* It allows the field to be set on a new document, then ignores later changes, both on `save()` and in updates like `findOneAndUpdate`. In my project, it stops an event's slug changing, so shared links keep working.
 
 **Interview Q:** *Why can't a Mongoose hook be an arrow function?* Arrow functions don't have their own `this`, and document middleware uses `this` to access the document.
 
