@@ -30,6 +30,12 @@
   19. Uploading a file: wrapping a callback API in a Promise
   20. `cacheComponents`: "Uncached data was accessed outside of `<Suspense>`"
   21. Using `rewrites` as a reverse proxy for analytics
+- [Project decisions and tooling](#project-decisions-and-tooling)
+  22. Protecting a free database: why one limit isn't enough
+  23. Guest bookings: an unverified email doesn't prove ownership
+  24. `.env.example` and un-ignoring a file in `.gitignore`
+  25. shadcn/ui: copied code, not a dependency
+  26. Git: uncommitted changes and branch prefixes
 
 ---
 
@@ -618,6 +624,10 @@ const EventDetailsPage = ({ params }: EventPageProps) => (
 
 **Trade-off I found by testing:** a missing event now shows the 404 page, but the response status is 200. The status is sent with the static shell, before `notFound()` runs during streaming.
 
+**Why it's worth having anyway:** without `Suspense`, visitors see nothing until all the data is ready. With it, the navbar and the fallback appear right away, and only the part inside the boundary waits. This applies in production too, because `next.config.ts` is used for both development and production, and the error stopped `npm run build`, so the site couldn't have been deployed.
+
+**Interview Q:** *Why use `<Suspense>` in a Server Component page?* To send the rest of the page immediately and stream the slow part in when it's ready. The `fallback` is what shows in the meantime, so one slow query doesn't hold up the whole page.
+
 **Interview Q:** *What is Partial Prerendering?* The page's static parts are prerendered and sent immediately, then dynamic parts stream in through `<Suspense>` boundaries. Users see content fast, even when some data is slow.
 
 ### 21. Using `rewrites` as a reverse proxy for analytics
@@ -646,3 +656,115 @@ Requests go to my own domain and Next.js forwards them. Ad blockers often block 
 - A **rewrite** happens on the server, and the browser's URL stays the same.
 
 **Interview Q:** *What's the difference between a redirect and a rewrite?* A redirect sends the browser to a new URL with a 3xx response. A rewrite serves the content from another location while keeping the original URL.
+
+---
+
+## Project decisions and tooling
+
+These came from questions I asked while building StackMeet.
+
+### 22. Protecting a free database: why one limit isn't enough
+
+My first idea was to limit events per user, so a public site couldn't push my free MongoDB plan over its storage limit. That alone doesn't work, because sign-up has no email verification and one person can create many accounts. The real protection is a set of limits that covers each way data can grow.
+
+| Limit (planned) | Value | What it protects against |
+|---|---|---|
+| Events per user | 3 | One account filling the site |
+| Total events | 100 | Many fake accounts, because it holds however many accounts exist |
+| Bookings per event | 200 | Guests booking with made-up emails |
+| Upcoming events per email | 3 | One email holding many spots |
+| Cover image size | 2 MB | Uploads using up image storage |
+
+Together these cap the site at 100 x 200 = 20,000 bookings, so storage has a known upper limit.
+
+**Only upcoming events count toward the per-email limit.** If past events counted, someone who attended 3 events could never book again.
+
+**Limits don't stop everything.** Someone could still fill an event's 200 spots with fake emails, and a per-email limit won't help because they can keep changing the address. That needs rate limiting or email verification, which are planned for after the prototype.
+
+**Interview Q:** *How would you stop users from running up your costs on a public app?* Find every way data can grow and cap each one, including a global cap that doesn't depend on user identity, because accounts are cheap to create. Then add rate limiting and email verification, and set up billing alerts or a free tier that can't charge you.
+
+### 23. Guest bookings: an unverified email doesn't prove ownership
+
+Guests can book with only a name and email, so `userId` is optional.
+
+```ts
+// lib/actions/booking.action.ts
+const session = await auth();
+
+await Booking.create({
+  eventId,
+  userId: session?.user?.id, // Guests have no session, so this stays empty
+  name: cleanName,
+  email: normalizedEmail,
+  phone: cleanPhone || undefined,
+});
+```
+
+I asked how a guest could see their booking later. It seems natural to show it once they sign up with the same email, but that's a security hole: emails aren't verified, so anyone could register with someone else's address and see or cancel that person's bookings. In the prototype, "My events" shows only bookings made while signed in.
+
+| Person | See the booking? | Cancel it? |
+|---|---|---|
+| Signed-in user | Yes, on My events | Yes |
+| Guest, prototype | Only the success message | No |
+| Guest, once email is added (planned) | Yes, through an emailed link | Yes |
+
+**The trade-off:** a guest can't cancel, so their booking counts toward the email's limit until the event ends. I accepted that to ship the first prototype sooner.
+
+**Interview Q:** *A user signs up with an email that already has guest orders. Should you link them automatically?* Only after verifying the email. Otherwise, signing up with someone else's address gives access to their data.
+
+### 24. `.env.example` and un-ignoring a file in `.gitignore`
+
+`.env` holds real secrets and must never be committed. `.env.example` is committed with placeholder values, so anyone who clones the repo can see which settings the app needs.
+
+```gitignore
+# .gitignore
+.env*
+!.env.example
+```
+
+`.env*` also matches `.env.example`, so the file would stay off GitHub without the second line. A `!` pattern re-includes a file, and when several patterns match, the last one wins, so the order matters.
+
+```bash
+# .env.example
+MONGODB_URI=your_connection_string
+AUTH_SECRET=your_secret
+NEXT_PUBLIC_POSTHOG_KEY=your_key
+```
+
+**Interview Q:** *What does the `NEXT_PUBLIC_` prefix do?* It puts the value into the browser bundle, so anyone can read it. Use it only for values that are safe to expose, and keep database URLs and auth secrets unprefixed so they stay on the server.
+
+**Interview Q:** *You committed a secret by accident. Is deleting it in a new commit enough?* No, it's still in the Git history. Rotate the secret first, then clean the history if needed.
+
+### 25. shadcn/ui: copied code, not a dependency
+
+I asked whether I needed shadcn/ui, and I didn't. It isn't a normal component library: its command copies each component's source into your project, so you own the code and can restyle it.
+
+```bash
+npx shadcn@latest add alert-dialog sheet
+```
+
+StackMeet doesn't use it. The design is already distinctive and most of the UI is simple, so the site uses Tailwind. The delete and cancel popups use the native `<dialog>` element instead, which handles much of the keyboard and focus behavior that's easy to get wrong.
+
+**Interview Q:** *When would you use a UI library rather than build it yourself?* For components with hard accessibility behavior, such as dialogs and menus. Simple things like cards and buttons rarely need one, and every extra library is more code to maintain.
+
+### 26. Git: uncommitted changes and branch prefixes
+
+Creating a branch doesn't require a commit first. Uncommitted changes aren't tied to a branch, so they stay in your working folder and come with you.
+
+```bash
+git switch -c feat/site-redesign   # uncommitted changes come along
+git status                         # they still show as changed
+```
+
+Committing on the new branch leaves `main` unchanged until you merge. Switching to an existing branch is different: Git refuses if that switch would overwrite your uncommitted changes, so you commit or stash them first.
+
+Prefixes like `feat/` are a naming convention that Git doesn't require. They show what kind of work a branch contains.
+
+| Prefix | Used for |
+|---|---|
+| `feat/` | New features or redesigns |
+| `fix/` | Bug fixes |
+| `chore/` | Maintenance, like renames or config |
+| `docs/` | Documentation |
+
+**Interview Q:** *What does `git stash` do?* It saves your uncommitted changes and cleans the working folder, so you can switch branches and bring the changes back later with `git stash pop`.
