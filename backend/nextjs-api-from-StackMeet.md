@@ -69,7 +69,7 @@ export const createBooking = async ({ eventId, email }: CreateBookingParams) => 
 **The client side.** The component calls the action like a normal async function, then checks `result.success` to choose what to show.
 
 ```ts
-// components/BookEvent.tsx (client component)
+// components/events/BookEvent.tsx (client component)
 const result = await createBooking({ eventId, slug, email: normalizedEmail });
 if (result.success) {
   setSubmitted(true);
