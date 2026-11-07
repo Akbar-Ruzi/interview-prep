@@ -59,13 +59,13 @@ that another developer can instrument the existing system without asking questio
 
 Every event must justify itself with a question it answers and a decision it enables. If you can't complete the sentence, you don't capture the event.
 
+Example: we capture `stock_threshold_triggered` because we need to know how often a clinic runs short of a critical supply, which lets us prioritise urgent restocking and escalate to Clinical Operations.
+
 ```md
 <!-- plan.md -->
 > "We capture `[event_type]` because we need to know `[hypothesis]`,
 > which allows us to make the decision `[concrete decision]`."
 ```
-
-Example: we capture `stock_threshold_triggered` because we need to know how often a clinic runs short of a critical supply, which lets us prioritise urgent restocking and escalate to Clinical Operations.
 
 **Interview Q:** *How do you avoid collecting "just in case" data?* Tie every event to a decision. Data without a decision costs storage and money, adds privacy risk, and creates noise. Anything that fails the test goes into a "discarded" list with the reason.
 
@@ -87,6 +87,8 @@ Example: we capture `stock_threshold_triggered` because we need to know how ofte
 
 The exact place in a user flow or system path where an event is emitted. You find them by walking the flow end to end.
 
+Design each step's outcomes to be **mutually exclusive**: one attempt = one event. Then "failure rate = failed / (failed + created)" is a simple, correct ratio.
+
 ```md
 <!-- telemetry-plan.md -->
 Login → Open inventory → (Direct stock edit attempt) → Submit order → Validation → Order saved → Stock recalculated
@@ -99,8 +101,6 @@ Login → Open inventory → (Direct stock edit attempt) → Submit order → Va
 Each order submission ends in exactly one outcome: `order_validation_failed` (nothing saved)
 or `inbound_order_created` / `outbound_order_created` (saved).
 ```
-
-Design each step's outcomes to be **mutually exclusive**: one attempt = one event. Then "failure rate = failed / (failed + created)" is a simple, correct ratio.
 
 **Interview Q:** *Should you track only successes?* No. Failures and rejections (validation errors, blocked actions) often tell you more: where users get stuck, or who is trying to bypass controls.
 
@@ -121,6 +121,8 @@ because the API can be called directly.
 
 A **data contract** is the agreed shape and meaning of the data a producer emits: event names, fields, types, allowed values, privacy rules, and versioning. Consumers (dashboards, reports, alerts) build against it. You define the contract first and pick infrastructure (queues, Kafka, warehouse) later.
 
+Future consumers shape the contract (every event carries `clinic_id` and `country` so it can be aggregated by clinic and country), but they aren't built now.
+
 ```md
 <!-- plan.md -->
 The deliverable is **design documentation, not code**.
@@ -129,13 +131,13 @@ This telemetry will later feed the network operations dashboard, Dr. Okonkwo's
 monthly executive report, and Claire's compliance alerts.
 ```
 
-Future consumers shape the contract (every event carries `clinic_id` and `country` so it can be aggregated by clinic and country), but they aren't built now.
-
 **Interview Q:** *Why design the contract before choosing the pipeline?* The contract is the expensive part to change: once many producers emit events and many consumers read them, renaming a field breaks everyone. Infrastructure can be swapped behind a stable contract. Building pipelines for consumers that don't exist yet is premature (YAGNI) and adds cost with no decision behind it.
 
 ### 4c. Emit business events after the commit, not on submit
 
 A business event should describe something that **actually happened**. If you emit it when the form is submitted, or before the database transaction commits, a failed validation or a rollback still produces an event, and the metrics overcount.
+
+Failures get their **own** event instead (here `order_validation_failed`), so nothing is lost.
 
 ```md
 <!-- telemetry-plan.md -->
@@ -144,14 +146,14 @@ A business event should describe something that **actually happened**. If you em
   orders are not counted.
 ```
 
-Failures get their **own** event instead (here `order_validation_failed`), so nothing is lost.
-
 **Interview Q:** *The DB commit succeeds but the event send fails (or the reverse). How do you keep them consistent?* Use the **transactional outbox** pattern: write the event to an `outbox` table in the same transaction as the business data, and have a separate relay publish it afterwards. Combined with a unique `eventId`, consumers can deduplicate any retries (at-least-once delivery).
 
 ### 4d. Edge-triggered vs level-triggered alerts
 
 - **Level-triggered**: fire on every check while the condition is true ("stock **is** below minimum").
 - **Edge-triggered**: fire only when the condition **changes** from false to true ("stock **crosses** below minimum").
+
+Example: stock 3, minimum 10, five more single-item orders. Level-triggered = 5 alerts for one shortage; edge-triggered = 1.
 
 ```md
 <!-- telemetry-plan.md -->
@@ -160,8 +162,6 @@ Failures get their **own** event instead (here `order_validation_failed`), so no
   stock stays below the minimum.
 - **System touchpoint:** ... (`previous_stock >= min_threshold` and `current_stock < min_threshold`).
 ```
-
-Example: stock 3, minimum 10, five more single-item orders. Level-triggered = 5 alerts for one shortage; edge-triggered = 1.
 
 **Interview Q:** *Why does this matter for alerting?* Level-triggered alerts on a persistent condition cause alert fatigue, so people start ignoring them. Edge-triggered gives one actionable alert per incident. It needs the previous state (before/after values), and you usually add a debounce for values flickering around the threshold.
 

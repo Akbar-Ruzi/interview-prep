@@ -116,6 +116,11 @@ export type CandidateStatus =
 
 Built-in types that build new types from existing ones, so there is one source of truth.
 
+- `Pick<T, K>`: keep only keys `K`.
+- `Omit<T, K>`: drop keys `K`.
+- `Partial<T>`: make every key optional.
+- `Record<K, V>`: an object with keys `K` and values `V`. If you add a new status to the union, TypeScript errors until you add its label.
+
 ```ts
 // types/candidate.ts
 // PUT body = Candidate minus server-owned fields
@@ -133,6 +138,8 @@ export type UpdateCandidateStatusPayload = Partial<
 export type ListFilters = Pick<GetRecordsParams, "status" | "stage" | "search">;
 ```
 
+`Record` forces a label for every status:
+
 ```ts
 // lib/constants.ts: Record forces a label for EVERY status
 export const STATUS_LABELS: Record<CandidateStatus, string> = {
@@ -142,11 +149,6 @@ export const STATUS_LABELS: Record<CandidateStatus, string> = {
   discarded: "Discarded",
 };
 ```
-
-- `Pick<T, K>`: keep only keys `K`.
-- `Omit<T, K>`: drop keys `K`.
-- `Partial<T>`: make every key optional.
-- `Record<K, V>`: an object with keys `K` and values `V`. If you add a new status to the union, TypeScript errors until you add its label.
 
 **Interview Q:** *Why derive `UpdateCandidatePayload` from `Candidate` instead of writing it out?* If `Candidate` changes, the payload updates automatically, so the two types can't drift apart.
 
@@ -183,12 +185,16 @@ TypeScript refines a broad type to a specific one inside a branch, based on a ru
 | `Array.isArray(x)` | `any[]` |
 | A custom type guard | whatever it declares |
 
+`instanceof` narrows the `unknown` value from a `catch`:
+
 ```ts
 // hooks/useCandidateFeed.ts: catch gives `unknown`; instanceof narrows it
 } catch (err) {
   setError(err instanceof Error ? err.message : "Could not load candidates.");
 }
 ```
+
+`instanceof` also picks the right branch here:
 
 ```ts
 // lib/utils/candidate-urls.ts: instanceof picks the right branch
@@ -204,6 +210,8 @@ const entries =
 
 A function that returns `boolean` and has the return type `value is T`. When it returns `true`, TypeScript treats the argument as `T` in that branch. It's a way to write your own narrowing.
 
+**The key difference:** a plain `boolean` return type tells TypeScript nothing. The project hit this directly: `isListCandidate(item): boolean` had to become `isCandidate(item): item is Candidate` before `return data` would type-check as `Promise<Candidate>`.
+
 ```ts
 // lib/api/validators/common-guards.ts
 export function isObject(value: unknown): value is Record<string, unknown> {
@@ -214,6 +222,8 @@ export function isStringOrNull(value: unknown): value is string | null {
   return typeof value === "string" || value === null;
 }
 ```
+
+`isCandidate` chains those helpers, so it only reads a field after checking the shape:
 
 ```ts
 // lib/api/validators/candidate-guards.ts
@@ -230,13 +240,13 @@ export function isCandidate(item: unknown): item is Candidate {
 }
 ```
 
-**The key difference:** a plain `boolean` return type tells TypeScript nothing. The project hit this directly: `isListCandidate(item): boolean` had to become `isCandidate(item): item is Candidate` before `return data` would type-check as `Promise<Candidate>`.
-
 **Interview Q:** *What's the risk of a type guard?* TypeScript trusts it completely. If the checks are incomplete, it can claim something is a `Candidate` when it isn't, so it has to check every field you rely on.
 
 ### 6. Runtime validation
 
 TypeScript types are erased when the code is compiled. They don't exist in the browser. A type like `Candidate` can't stop a malformed API response, so you check the data at runtime at the boundary, where it enters the app.
+
+Result: a broken API answer shows an error message instead of a blank list or a crash deep in the UI.
 
 ```ts
 // lib/api/records.ts
@@ -246,8 +256,6 @@ if (!isCandidateListResponse(data)) {
 }
 return data;
 ```
-
-Result: a broken API answer shows an error message instead of a blank list or a crash deep in the UI.
 
 **Interview Q:** *Doesn't TypeScript already guarantee the response type?* No. `fetch().json()` returns `any`. TypeScript only checks your code, not the data. Libraries like **Zod** do the same job declaratively (`schema.parse(data)`).
 
@@ -290,6 +298,8 @@ function toStatus(value: string | null): CandidateStatus | undefined {
     : undefined;
 }
 ```
+
+This one is unchecked, which is why callers pass `<unknown>`:
 
 ```ts
 // lib/api/api-fetch.ts: unchecked assertion; that's why callers pass <unknown>
@@ -362,10 +372,14 @@ return (
 );
 ```
 
+The same idea works as a guard clause with `||`:
+
 ```ts
 // hooks/useCandidateFeed.ts: guard clause with ||
 if (loadingMoreRef.current || ended || candidates.length >= total) return;
 ```
+
+It also renders something only when a value exists:
 
 ```tsx
 // components/shared/error-state.tsx: render only if provided
@@ -396,6 +410,8 @@ async function load() {
 
 `fetch` only rejects on network failure. A 404 or 500 still resolves, so you have to check `response.ok`.
 
+The helper also reads `response.text()` before parsing, which lets it handle empty bodies (DELETE) and invalid JSON separately.
+
 ```ts
 // lib/api/api-fetch.ts
 let response: Response;
@@ -410,13 +426,13 @@ if (!response.ok) {
 }
 ```
 
-The helper also reads `response.text()` before parsing, which lets it handle empty bodies (DELETE) and invalid JSON separately.
-
 **Interview Q:** *Does `fetch` throw on a 500?* No. That's the most common fetch interview trap.
 
 ### 15. Closures
 
 A function remembers the variables from the scope where it was created.
+
+The cleanup function in an effect is also a closure. It captures that run's `ignore` or `timer`.
 
 ```ts
 // hooks/useCandidateFeed.ts: isOutdated "remembers" listId from when loadMore started
@@ -424,11 +440,11 @@ const listId = listIdRef.current;
 const isOutdated = () => listId !== listIdRef.current;
 ```
 
-The cleanup function in an effect is also a closure. It captures that run's `ignore` or `timer`.
-
 **Interview Q:** *What is a stale closure in React?* A callback that captured an old render's state. Fixes include functional updates, refs, and `useEffectEvent` (see #26).
 
 ### 16. Destructuring, spread, and rest
+
+Destructuring pulls values out, rest collects what's left, and spread appends without mutating.
 
 ```ts
 // lib/api/api-fetch.ts: pull one option out, keep the rest
@@ -442,6 +458,8 @@ setCandidates((prev) => [...prev, ...response.data]);
 ```
 
 ### 17. `URLSearchParams` and `encodeURIComponent`
+
+`URLSearchParams` builds a query string safely, and `encodeURIComponent` makes one value safe inside a path.
 
 ```ts
 // lib/api/records.ts: building a query string safely
@@ -479,6 +497,10 @@ useEffect(() => {
 
 **How:** move the logic into a `use…` function, take inputs as parameters, and return what callers need.
 
+Two design points from this hook:
+- **Accepts `null`.** Hooks can't be called inside an `if`, so the drawer calls it on every render, even while closed. The hook skips the fetch itself when `id` is `null`.
+- **Called in the parent, not the tab.** It first lived inside `CandidateNotes`, so every Overview → Notes switch unmounted and remounted it, which refetched each time. Moved up to the drawer/full page (which stay mounted), the notes load once per candidate. `CandidateNotes` now only displays props.
+
 ```ts
 // hooks/useCandidateNotes.ts (shortened)
 export function useCandidateNotes(id: string | null) {
@@ -507,15 +529,13 @@ export function useCandidateNotes(id: string | null) {
 }
 ```
 
+Each view then needs one line:
+
 ```tsx
 // ✅ With the hook: one line in each view
 const notes = useCandidateNotes(candidateId); // drawer (null while closed)
 const notes = useCandidateNotes(id);          // full page
 ```
-
-Two design points from this hook:
-- **Accepts `null`.** Hooks can't be called inside an `if`, so the drawer calls it on every render, even while closed. The hook skips the fetch itself when `id` is `null`.
-- **Called in the parent, not the tab.** It first lived inside `CandidateNotes`, so every Overview → Notes switch unmounted and remounted it, which refetched each time. Moved up to the drawer/full page (which stay mounted), the notes load once per candidate. `CandidateNotes` now only displays props.
 
 **Benefits:**
 - **Reuse (DRY):** one fix applies everywhere it's used.
@@ -533,6 +553,8 @@ Two design points from this hook:
 | `useCandidateDetail` | One candidate from GET `/records/:id`; loading/error/retry |
 | `useCandidateNotes` | A candidate's notes from GET `/records/:id/notes`; loading/error |
 
+This is the smallest hook in the project:
+
 ```ts
 // hooks/useCandidateDrawerHref.ts: the smallest example
 export function useCandidateDrawerHref() {
@@ -540,6 +562,8 @@ export function useCandidateDrawerHref() {
   return (id: string) => drawerHref(listQuery, id);
 }
 ```
+
+Components stay simple:
 
 ```tsx
 // components/candidate-list/candidate-list.tsx: components stay simple
@@ -572,6 +596,10 @@ setCandidates((prev) => [...prev, ...response.data]);     // append a page
 
 An effect syncs the component with something outside React: the network, the DOM, timers, or event listeners. The cleanup runs before the next run and when the component unmounts.
 
+- `[]`: run once after mount.
+- `[a, b]`: run again when `a` or `b` changes.
+- No array: run after every render.
+
 ```ts
 // components/candidate-detail/candidate-drawer.tsx
 useEffect(() => {
@@ -591,10 +619,6 @@ useEffect(() => {
   };
 }, [candidateId, close]);
 ```
-
-- `[]`: run once after mount.
-- `[a, b]`: run again when `a` or `b` changes.
-- No array: run after every render.
 
 ### 21. Race conditions in data fetching (the `ignore` flag)
 
@@ -641,6 +665,8 @@ const loadMoreAreaRef = useRef<HTMLDivElement>(null);
 
 When a prop changes and some state must reset, do it during render by comparing with the previous value. An effect would first render the old data under the new filters, then fix it.
 
+This is the React docs' "You Might Not Need an Effect" pattern. Another option is to remount the component with a new `key`.
+
 ```ts
 // hooks/useCandidateFeed.ts
 const filterKey = `${status ?? ""}|${stage ?? ""}|${search ?? ""}`;
@@ -652,8 +678,6 @@ if (filterKey !== prevFilterKey) {
   // ...
 }
 ```
-
-This is the React docs' "You Might Not Need an Effect" pattern. Another option is to remount the component with a new `key`.
 
 ### 24. Derived values instead of state
 
@@ -726,6 +750,8 @@ useEffect(() => {
 
 ### 28. Conditional rendering
 
+Show one state at a time with a chain of ternaries:
+
 ```tsx
 // components/candidate-list/candidate-list.tsx: one state at a time
 {feed.loading ? (
@@ -738,6 +764,8 @@ useEffect(() => {
   <CandidateCards candidates={feed.candidates} />
 )}
 ```
+
+Return `null` to render nothing:
 
 ```tsx
 // components/candidate-detail/candidate-drawer.tsx: render nothing
@@ -758,6 +786,10 @@ if (!candidateId) return null;
 
 ### 30. Reusable components and default props
 
+`ErrorState` has optional props: no Retry button appears without `onRetry`, and `title` gets a default value.
+
+The same component is used for the list, and later for details and notes.
+
 ```tsx
 // components/shared/error-state.tsx
 type ErrorStateProps = {
@@ -772,8 +804,6 @@ export default function ErrorState({
   onRetry,
 }: ErrorStateProps) { /* ... */ }
 ```
-
-The same component is used for the list, and later for details and notes.
 
 `STATUS_STYLES: Record<CandidateStatus, string>` in `candidate-badges.tsx` maps data to styles. Lookup tables like this beat long `if` or `switch` chains.
 
@@ -813,11 +843,15 @@ return () => observer.disconnect();
 
 ### 34. Accessibility in components
 
+A drawer needs a dialog role and a name:
+
 ```tsx
 // components/candidate-detail/candidate-drawer.tsx
 <aside role="dialog" aria-modal="true" aria-labelledby="candidate-drawer-title">
   <h2 id="candidate-drawer-title">{candidate.full_name}</h2>
 ```
+
+Other common patterns:
 
 ```tsx
 // Icon-only buttons need a text label
@@ -849,6 +883,8 @@ app/layout.tsx                →  wraps every page
 - **Server Components** are the default in the App Router. They render on the server and send no JavaScript for themselves. They can't use state, effects, or browser APIs.
 - **Client Components** start with `"use client"`. They can use hooks, event handlers, and `window`.
 
+`candidate-full-page.tsx` and `error-state.tsx` have no directive. They are rendered by whichever kind of component imports them.
+
 ```tsx
 // app/page.tsx: Server Component (no directive); composes client parts
 export default function Home() { /* ... */ }
@@ -856,8 +892,6 @@ export default function Home() { /* ... */ }
 // components/candidate-list/candidate-list.tsx
 "use client";   // uses state, effects, useSearchParams
 ```
-
-`candidate-full-page.tsx` and `error-state.tsx` have no directive. They are rendered by whichever kind of component imports them.
 
 **Interview Q:** *Where does `"use client"` go?* As high as necessary but as low as possible. Everything a client file imports becomes client code.
 
@@ -891,13 +925,13 @@ router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false }); //
 
 Status, stage, page, and the open drawer (`?candidate=12`) all live in the URL. That gives you refresh, shareable links, and a working Back button for free. Search text stays in local state, so the URL doesn't change on every keystroke.
 
+Invalid values (`?status=bogus`, `?page=abc`) are validated, ignored, and then removed from the URL (`useRecordsFilters`).
+
 ```text
 /?status=received&page=2                  list
 /?status=received&page=2&candidate=12     list + drawer
 /candidates/12?status=received&page=2     full page; the list query is kept for Back
 ```
-
-Invalid values (`?status=bogus`, `?page=abc`) are validated, ignored, and then removed from the URL (`useRecordsFilters`).
 
 ### 40. `Suspense` boundaries
 
@@ -914,6 +948,8 @@ Invalid values (`?status=bogus`, `?page=abc`) are validated, ignored, and then r
 
 Since Next.js 15, a page's `params` and `searchParams` are Promises. Reading them inside `<Suspense>` keeps the rest of the page static, which allows prerendering.
 
+`Promise.all` waits for both promises in parallel.
+
 ```tsx
 // app/candidates/[id]/page.tsx: not async; the promise resolves inside Suspense
 <Suspense fallback={<p>Loading…</p>}>
@@ -924,8 +960,6 @@ Since Next.js 15, a page's `params` and `searchParams` are Promises. Reading the
   )}
 </Suspense>
 ```
-
-`Promise.all` waits for both promises in parallel.
 
 ### 42. `PageProps` and `LayoutProps` typed helpers
 
@@ -963,6 +997,8 @@ if (loadedKeyRef.current === loadKey) return;   // shown again: keep the cards
 
 ### 45. Metadata API and `next/font`
 
+`metadata` sets the page's title and description, and `next/font` self-hosts the font at build time.
+
 ```tsx
 // app/layout.tsx
 export const metadata: Metadata = {
@@ -978,6 +1014,8 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 
 Only variables prefixed with `NEXT_PUBLIC_` reach the browser. They're inlined at build time. Never put secrets in them.
 
+`.env.local` is git-ignored. `.env.example` documents the variable.
+
 ```ts
 // lib/api/api-fetch.ts
 const base = process.env.NEXT_PUBLIC_API_URL;
@@ -985,8 +1023,6 @@ if (!base) {
   throw new Error("API URL not configured. Set NEXT_PUBLIC_API_URL in .env.local.");
 }
 ```
-
-`.env.local` is git-ignored. `.env.example` documents the variable.
 
 ---
 
@@ -1213,6 +1249,12 @@ The cleanup line, `return () => clearTimeout(timer)`, is the same in both effect
 
 If a timer can outlive the component, always clear it in the effect's cleanup.
 
+The cleanup runs in two situations:
+1. **Before the effect runs again,** when `saved` changes. If `saved` goes back to `false` first (for example, the user clicks Edit), the old timer is cancelled, so it can't hide a later message too early.
+2. **When the component unmounts,** for example when the drawer closes or another candidate opens. The timer is cancelled, so nothing tries to update a component that's gone.
+
+The `if (!saved) return;` line means no timer is started when there's nothing to hide.
+
 ```ts
 useEffect(() => {
   if (!saved) return;
@@ -1220,12 +1262,6 @@ useEffect(() => {
   return () => clearTimeout(timer);
 }, [saved]);
 ```
-
-The cleanup runs in two situations:
-1. **Before the effect runs again,** when `saved` changes. If `saved` goes back to `false` first (for example, the user clicks Edit), the old timer is cancelled, so it can't hide a later message too early.
-2. **When the component unmounts,** for example when the drawer closes or another candidate opens. The timer is cancelled, so nothing tries to update a component that's gone.
-
-The `if (!saved) return;` line means no timer is started when there's nothing to hide.
 
 Both cards also reset `saved` when Edit is opened, which triggers the cleanup above:
 
@@ -1247,6 +1283,16 @@ const startEditing = () => {
 
 Every save needs three kinds of feedback, plus protection against sending it twice.
 
+| State | What the user sees | Why |
+|---|---|---|
+| Saving | Disabled controls, "Saving…" | No double submits; shows something is happening |
+| Success | Green banner, which hides after 3 s; badges update | Confirms the change; no reload needed |
+| Error | `ErrorState` with Retry; the user's choices are kept | The user can retry without re-entering anything |
+
+Using the **server's response** (`updated`) instead of the local draft means the UI shows exactly what was saved, including server-set fields like `updated_at`.
+
+**Send only what changed.** If nothing changed, no request is made.
+
 ```ts
 // components/candidate-detail/recruitment-progress-card.tsx
 const save = async () => {
@@ -1257,7 +1303,11 @@ const save = async () => {
     setEditing(false);                                       // nothing changed: no request
     return;
   }
+```
 
+**Save, and show feedback.**
+
+```ts
   setSaving(true);                    // 1. saving: disables the form
   setError(null);
   try {
@@ -1274,6 +1324,8 @@ const save = async () => {
 };
 ```
 
+**Disable the form while saving.**
+
 ```tsx
 <fieldset disabled={saving}>...</fieldset>          {/* disables every control inside */}
 <button type="submit" disabled={saving}>
@@ -1281,14 +1333,6 @@ const save = async () => {
 </button>
 {error && <ErrorState message={error} onRetry={save} />}
 ```
-
-| State | What the user sees | Why |
-|---|---|---|
-| Saving | Disabled controls, "Saving…" | No double submits; shows something is happening |
-| Success | Green banner, which hides after 3 s; badges update | Confirms the change; no reload needed |
-| Error | `ErrorState` with Retry; the user's choices are kept | The user can retry without re-entering anything |
-
-Using the **server's response** (`updated`) instead of the local draft means the UI shows exactly what was saved, including server-set fields like `updated_at`.
 
 **Interview Q:** *Optimistic vs pessimistic updates?* **Pessimistic** (used here): wait for the server, then update the UI. It's simple and always accurate, but it feels slower. **Optimistic**: update the UI immediately, then roll back if the request fails. It feels instant, but needs rollback logic. Use optimistic updates for frequent, low-risk actions (likes); use pessimistic updates for important decisions (hiring status).
 
@@ -1300,27 +1344,9 @@ Using the **server's response** (`updated`) instead of the local draft means the
 
 ### 55. `keyof`, `Record`, and `Partial` together: a typed errors object
 
-Three type tools, combined to describe "at most one error message per form field":
+Three type tools, combined to describe "at most one error message per form field".
 
-```ts
-// types/candidate.ts
-export type CandidateFormValues = {
-  full_name: string;
-  email: string;
-  phone: string;
-  position: string;
-  linkedin_url: string;
-  cv_url: string;
-  experience_years: string;
-};
-
-// One message per invalid field; a field with no entry is valid
-export type CandidateFormErrors = Partial<
-  Record<keyof CandidateFormValues, string>
->;
-```
-
-Read it from the inside out:
+Read `CandidateFormErrors` from the inside out:
 
 | Step | Type | Result |
 |---|---|---|
@@ -1340,7 +1366,29 @@ Read it from the inside out:
 - **`Record<K, V>`** builds an object type from a set of keys and one value type (see #2).
 - **`Partial<T>`** makes every key optional (see #2). Without it, the validator would have to return a message for every field, even valid ones.
 
+The types themselves:
+
+```ts
+// types/candidate.ts
+export type CandidateFormValues = {
+  full_name: string;
+  email: string;
+  phone: string;
+  position: string;
+  linkedin_url: string;
+  cv_url: string;
+  experience_years: string;
+};
+
+// One message per invalid field; a field with no entry is valid
+export type CandidateFormErrors = Partial<
+  Record<keyof CandidateFormValues, string>
+>;
+```
+
 Why this shape fits validation: a missing key means "valid", so `{}` means the whole form is fine, and checking is a simple lookup.
+
+Because the keys come from `CandidateFormValues` via `keyof`, adding a field to the form type adds it to the errors type automatically. A typo like `errors.fullname` is also a compile error.
 
 ```ts
 // lib/utils/candidate-form.ts: start empty, add a key only for a bad field
@@ -1351,13 +1399,13 @@ if (!values.full_name.trim()) {
 return errors;
 ```
 
+Each field then looks up its own message:
+
 ```tsx
 // candidate-form.tsx: look a field up by name; undefined = no error
 const error = errors[field.name];
 {error && <p id={errorId}>{error}</p>}
 ```
-
-Because the keys come from `CandidateFormValues` via `keyof`, adding a field to the form type adds it to the errors type automatically. A typo like `errors.fullname` is also a compile error.
 
 **Interview Q:** *What does `keyof` return?* A union of string literal types, one per property name. `keyof { a: string; b: number }` is `"a" | "b"`.
 
@@ -1384,6 +1432,8 @@ app/layout.tsx
 
 Three parts: create the context, provide a value, read it.
 
+**The value's type.**
+
 ```tsx
 // context/candidate-updates.tsx
 "use client"; // context and useState only work in Client Components
@@ -1392,10 +1442,18 @@ type CandidateUpdates = {
   saveCount: number;                // goes up by one after every save
   notifyCandidateSaved: () => void; // call after a successful save
 };
+```
 
+**1. Create the context.**
+
+```tsx
 // 1. Create. Default null = "no provider above this component"
 const CandidateUpdatesContext = createContext<CandidateUpdates | null>(null);
+```
 
+**2. Provide a value.**
+
+```tsx
 // 2. Provide: owns the state, wraps the part of the tree that can read it
 export function CandidateUpdatesProvider({ children }: { children: ReactNode }) {
   const [saveCount, setSaveCount] = useState(0);
@@ -1409,7 +1467,11 @@ export function CandidateUpdatesProvider({ children }: { children: ReactNode }) 
   // React 19: <Context value> (older React: <Context.Provider value>)
   return <CandidateUpdatesContext value={value}>{children}</CandidateUpdatesContext>;
 }
+```
 
+**3. Read it.**
+
+```tsx
 // 3. Read: a custom hook that fails loudly if the provider is missing
 export function useCandidateUpdates(): CandidateUpdates {
   const context = useContext(CandidateUpdatesContext);
@@ -1420,12 +1482,16 @@ export function useCandidateUpdates(): CandidateUpdates {
 }
 ```
 
+**Wrap the app in the provider.**
+
 ```tsx
 // app/layout.tsx: a Server Component can render a Client Component provider
 <body>
   <CandidateUpdatesProvider>{children}</CandidateUpdatesProvider>
 </body>
 ```
+
+**Write and read the value.**
 
 ```ts
 // hooks/useCandidateDetail.ts: the writer
@@ -1520,7 +1586,20 @@ setCandidates(pages.flatMap((response) => response.data));
 
 ### 59. A type-safe generic setter: `K extends keyof T`, `T[K]`, `NonNullable`
 
-One `setDraft` function updates either part of a candidate's draft, and TypeScript checks that the values match the part you name. Several type features work together:
+One `setDraft` function updates either part of a candidate's draft, and TypeScript checks that the values match the part you name. Several type features work together.
+
+| Feature | In the code | What it does |
+|---|---|---|
+| Optional properties (`?`) | `general?:`, `progress?:` | A candidate can have one draft, both, or none. The type of `general` becomes `CandidateFormValues \| undefined`. |
+| `Pick<T, K>` | `Pick<Candidate, "status" \| "stage">` | Reuses the two fields from `Candidate` (see #2), so the draft can't drift from the real type |
+| `keyof` | `keyof CandidateDraft` | The union of the keys: `"general" \| "progress"` (see #55) |
+| `Record<K, V>` | `Record<string, CandidateDraft>` | An object used as a map: candidate ID → draft |
+| Generic function type | `<K extends DraftPart>(...) => void` | `setDraft` gets its own type parameter `K` each time it's called |
+| Generic constraint (`extends`) | `K extends DraftPart` | `K` can only be `"general"` or `"progress"`, not any string |
+| Indexed access type | `CandidateDraft[K]` | "The type of property `K`": `CandidateDraft["progress"]` is `{ status, stage } \| undefined` |
+| `NonNullable<T>` | `NonNullable<CandidateDraft[K]>` | Removes `null` and `undefined`, so you must pass real values, not `undefined` |
+
+The types themselves:
 
 ```ts
 // context/candidate-drafts.tsx
@@ -1541,18 +1620,9 @@ type CandidateDrafts = {
 };
 ```
 
-| Feature | In the code | What it does |
-|---|---|---|
-| Optional properties (`?`) | `general?:`, `progress?:` | A candidate can have one draft, both, or none. The type of `general` becomes `CandidateFormValues \| undefined`. |
-| `Pick<T, K>` | `Pick<Candidate, "status" \| "stage">` | Reuses the two fields from `Candidate` (see #2), so the draft can't drift from the real type |
-| `keyof` | `keyof CandidateDraft` | The union of the keys: `"general" \| "progress"` (see #55) |
-| `Record<K, V>` | `Record<string, CandidateDraft>` | An object used as a map: candidate ID → draft |
-| Generic function type | `<K extends DraftPart>(...) => void` | `setDraft` gets its own type parameter `K` each time it's called |
-| Generic constraint (`extends`) | `K extends DraftPart` | `K` can only be `"general"` or `"progress"`, not any string |
-| Indexed access type | `CandidateDraft[K]` | "The type of property `K`": `CandidateDraft["progress"]` is `{ status, stage } \| undefined` |
-| `NonNullable<T>` | `NonNullable<CandidateDraft[K]>` | Removes `null` and `undefined`, so you must pass real values, not `undefined` |
-
 **How `K` links the arguments:** TypeScript infers `K` from the `part` you pass, then uses the same `K` to decide what `values` must be.
+
+Without the generic, the best you could write is `part: DraftPart, values: CandidateDraft[DraftPart]`. That type is "either kind of values", so `setDraft(id, "progress", formValues)` would compile even though it's wrong. The generic ties `values` to the **specific** `part` given.
 
 ```ts
 // recruitment-progress-card.tsx
@@ -1565,8 +1635,6 @@ setDraft(candidate.id, "progress", toCandidateFormValues(candidate)); // ❌ for
 setDraft(candidate.id, "notes", {});                                  // ❌ "notes" isn't a DraftPart
 setDraft(candidate.id, "progress", undefined);                        // ❌ blocked by NonNullable
 ```
-
-Without the generic, the best you could write is `part: DraftPart, values: CandidateDraft[DraftPart]`. That type is "either kind of values", so `setDraft(id, "progress", formValues)` would compile even though it's wrong. The generic ties `values` to the **specific** `part` given.
 
 Reading a draft uses optional chaining (see #10), because both the candidate's entry and the part may be missing:
 
@@ -1592,12 +1660,20 @@ const editing = draft !== undefined;
 
 `CandidateForm` started uncontrolled and became controlled, so its values could outlive the component:
 
+Moving state from a child to its parent (or higher, into context) is called **lifting state up**. The form still keeps purely local state itself: its validation `errors`.
+
+**Before: uncontrolled.**
+
 ```tsx
 // Before: uncontrolled. The values die with the form.
 function CandidateForm({ initialValues, ... }) {
   const [values, setValues] = useState(initialValues);
 }
+```
 
+**After: controlled.**
+
+```tsx
 // After: controlled. The parent decides where the values live.
 function CandidateForm({ values, onChange, ... }) {
   const setField = (name: FieldName, value: string) => {
@@ -1605,6 +1681,8 @@ function CandidateForm({ values, onChange, ... }) {
   };
 }
 ```
+
+The values now live in a context, so they survive switching views:
 
 ```tsx
 // components/candidate-detail/general-information-card.tsx
@@ -1620,8 +1698,6 @@ const editing = draft !== undefined; // derived: a draft means the form is open
 />
 ```
 
-Moving state from a child to its parent (or higher, into context) is called **lifting state up**. The form still keeps purely local state itself: its validation `errors`.
-
 **Interview Q:** *Controlled vs uncontrolled: when to use which?* Controlled when the parent needs the value: to validate as you type, keep it after the component unmounts, sync it with other UI, or reset it. Uncontrolled (including native inputs read on submit, e.g. with `FormData`) is simpler when only the final value matters.
 
 **Interview Q:** *What is "lifting state up"?* Moving state to the closest common parent of the components that need it, then passing it down as props. Here it went one step further, into context, because the two views are on different routes.
@@ -1629,6 +1705,10 @@ Moving state from a child to its parent (or higher, into context) is called **li
 ### 61. Accessible client-side validation
 
 Validate before sending, show a message next to each bad field, and make it work for screen readers and keyboards.
+
+- **Client validation is for the user, not for security.** The API must validate too; the client can be bypassed.
+- **Some rules are your own.** The API accepts any number for years, so the 0–60 limit (`MAX_EXPERIENCE_YEARS`) is a business rule, and a comment says so.
+- Editing a field clears only that field's message.
 
 ```ts
 // lib/utils/candidate-form.ts: a pure function, easy to test
@@ -1639,6 +1719,8 @@ export function validateCandidateForm(values: CandidateFormValues): CandidateFor
   return errors; // {} = valid
 }
 ```
+
+Mark invalid inputs for screen readers:
 
 ```tsx
 // components/candidate-form/candidate-form.tsx
@@ -1651,6 +1733,8 @@ export function validateCandidateForm(values: CandidateFormValues): CandidateFor
 {error && <p id={errorId}>{error}</p>}
 ```
 
+On a failed submit, send nothing and move focus:
+
 ```ts
 // On a failed submit, send nothing and move focus to the first field to fix
 const firstInvalid = FIELDS.find((field) => found[field.name]);
@@ -1660,10 +1744,6 @@ if (firstInvalid) {
 }
 onSubmit(values);
 ```
-
-- **Client validation is for the user, not for security.** The API must validate too; the client can be bypassed.
-- **Some rules are your own.** The API accepts any number for years, so the 0–60 limit (`MAX_EXPERIENCE_YEARS`) is a business rule, and a comment says so.
-- Editing a field clears only that field's message.
 
 **Interview Q:** *If the server validates, why validate on the client?* Faster feedback, fewer wasted requests, and messages next to the right field. The server is still the source of truth.
 
@@ -1681,6 +1761,8 @@ const inputId = (name: FieldName) => `${idPrefix}-${name}`;
 <input id={inputId("email")} />
 ```
 
+`requestSubmit()` behaves like clicking the submit button: it fires the `submit` event, so `onSubmit` runs (validation, the "nothing changed" check, the PUT). `form.submit()` skips the event and does a full-page form post.
+
 ```tsx
 // general-information-card.tsx: Retry submits the form from outside it
 const formId = useId();
@@ -1694,8 +1776,6 @@ const retry = () => {
 <ErrorState ... onRetry={retry} />
 ```
 
-`requestSubmit()` behaves like clicking the submit button: it fires the `submit` event, so `onSubmit` runs (validation, the "nothing changed" check, the PUT). `form.submit()` skips the event and does a full-page form post.
-
 **Interview Q:** *Why `useId` instead of `Math.random()` or a counter?* Random IDs differ between the server render and hydration (a mismatch), and a module counter breaks with concurrent rendering. `useId` is stable and unique per instance.
 
 **Interview Q:** *`form.submit()` vs `form.requestSubmit()`?* `submit()` sends the form directly, without the `submit` event or built-in validation. `requestSubmit()` acts like a real submit click, so your `onSubmit` handler runs.
@@ -1704,11 +1784,15 @@ const retry = () => {
 
 A modal must manage keyboard focus, or keyboard users end up behind it. Three parts:
 
+**The markup.** `tabIndex={-1}` lets code focus the dialog.
+
 ```tsx
 // components/candidate-detail/candidate-drawer.tsx
 <aside ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={TITLE_ID}
   tabIndex={-1}> {/* focusable from code, but not a Tab stop */}
 ```
+
+**Move focus in on open, and back on close.**
 
 ```ts
 // 1. Move in on open, 3. return on close
@@ -1721,6 +1805,10 @@ useEffect(() => {
   };
 }, [isOpen]);
 ```
+
+**Trap Tab inside the dialog.**
+
+The focusable elements are looked up **on every Tab**, because the content changes (Edit swaps text for inputs). Escape closes, and the page behind doesn't scroll (`overflow: hidden` on `body`).
 
 ```ts
 // 2. Trap: Tab past the last control wraps to the first, and back
@@ -1738,8 +1826,6 @@ function trapTab(event: KeyboardEvent, root: HTMLElement) {
   }
 }
 ```
-
-The focusable elements are looked up **on every Tab**, because the content changes (Edit swaps text for inputs). Escape closes, and the page behind doesn't scroll (`overflow: hidden` on `body`).
 
 **Interview Q:** *What does an accessible modal need?* `role="dialog"`, `aria-modal="true"`, an accessible name (`aria-labelledby`), focus moved in on open, focus trapped inside, Escape to close, and focus returned to the trigger on close.
 
@@ -1771,6 +1857,8 @@ const addNote = (note: Note) => {
 
 The fix is a ref that always holds the **latest** value. Every closure reads the same ref object, so `ref.current` is never stale:
 
+Why a ref and not state: changing `ref.current` doesn't re-render, and reading it gives the value *right now*, not the value from some earlier render (see #22).
+
 ```ts
 // hooks/useCandidateNotes.ts
 // The candidate shown now, read by addNote after a save finishes
@@ -1786,8 +1874,6 @@ const addNote = (note: Note) => {
   setNotes((current) => [...current, note]);
 };
 ```
-
-Why a ref and not state: changing `ref.current` doesn't re-render, and reading it gives the value *right now*, not the value from some earlier render (see #22).
 
 **Interview Q:** *What is a stale closure in React?* A callback (often after `await`, or inside `setTimeout`/`setInterval`) that reads props or state from the render it was created in, not the current one. Fixes: functional updates (`setX((current) => …)`) when you only need the latest *state*; a "latest value" ref when you need the latest *prop* or value outside the setter; or cancel the work when inputs change.
 
@@ -1859,6 +1945,12 @@ const removeNote = async (note: Note) => {
 return { notes, loading, error, retry, saveNote, removeNote };
 ```
 
+Why the pending/error state stays in the component, not the hook:
+- It belongs to **one button on screen**. In the hook it would need `deletingIds: Set<string>` and `errorsById` just to track buttons.
+- Two views (drawer and full page) each call the hook, so it is per-view UI anyway.
+
+Why the hook **throws** instead of storing the error: the hook doesn't know where the message should appear (inside a confirmation, under a text box, in a banner). Throwing hands that choice to the component.
+
 ```tsx
 // components/candidate-detail/candidate-notes.tsx: owns the button
 const confirmDelete = async () => {
@@ -1876,18 +1968,14 @@ const confirmDelete = async () => {
 };
 ```
 
-Why the pending/error state stays in the component, not the hook:
-- It belongs to **one button on screen**. In the hook it would need `deletingIds: Set<string>` and `errorsById` just to track buttons.
-- Two views (drawer and full page) each call the hook, so it is per-view UI anyway.
-
-Why the hook **throws** instead of storing the error: the hook doesn't know where the message should appear (inside a confirmation, under a text box, in a banner). Throwing hands that choice to the component.
-
 **Benefits:**
 - Components don't import `lib/api`: one place shows how the data is loaded *and* changed.
 - The list always updates the same way after a request, whichever component triggered it.
 - Swapping the hook for a library later (React Query, SWR) barely touches the components.
 
 The same idea in **React Query**:
+
+React Query adds caching, retries, and `invalidateQueries` (refetch every view that shows those notes, which also solves keeping the drawer and full page in sync).
 
 ```tsx
 const queryClient = useQueryClient();
@@ -1899,8 +1987,6 @@ const deleteMutation = useMutation({
 // Component: deleteMutation.mutate(note)
 // Pending/error come from the mutation: deleteMutation.isPending, deleteMutation.error
 ```
-
-React Query adds caching, retries, and `invalidateQueries` (refetch every view that shows those notes, which also solves keeping the drawer and full page in sync).
 
 **Interview Q:** *Where should API calls live in a React app?* Not in presentational components. Put them in a typed API layer, and call them from data hooks (custom hooks or a library like React Query/SWR). Components call the hook's functions and own only UI state: pending, errors, success messages, focus.
 
@@ -1970,6 +2056,8 @@ That is what happened in this project. The drawer (`/`) and the expanded view (`
 
 The fix is the same as for the form drafts (#56): move that state **above both routes**, into the drafts context, keyed by candidate ID.
 
+Not everything moved. `saving` / `deleting` (a request in flight) and the success banner stay local: they belong to one request in one view, and a new view shouldn't pretend a request it didn't start is still running.
+
 ```ts
 // context/candidate-drafts.tsx
 export type CandidateDraft = {
@@ -1980,6 +2068,8 @@ export type CandidateDraft = {
   deletingNoteId?: string; // The note whose delete confirmation is open
 };
 ```
+
+The component reads and writes those values through the context:
 
 ```tsx
 // components/candidate-detail/candidate-notes.tsx
@@ -1995,8 +2085,6 @@ const openComposer = () => {
   setDraft(candidateId, "noteDraft", "");
 };
 ```
-
-Not everything moved. `saving` / `deleting` (a request in flight) and the success banner stay local: they belong to one request in one view, and a new view shouldn't pretend a request it didn't start is still running.
 
 How to decide where UI state lives:
 - **Only this component, gone on unmount is fine** → `useState`.
@@ -2023,6 +2111,8 @@ So the check has to be `draft !== undefined`, not `if (draft)`. `""` is **falsy*
 
 The context's `clearDraft` originally had exactly that bug:
 
+With the old check, Add Note → Cancel left `noteDraft: ""` behind. The composer looked closed until you switched views, and then it reopened by itself.
+
 ```ts
 // ❌ Before: "" counts as "no draft", so it is never deleted
 if (!current[id]?.[part]) return current;
@@ -2031,8 +2121,6 @@ if (!current[id]?.[part]) return current;
 // no draft: nothing to change ("" is still a draft: an open, empty composer)
 if (current[id]?.[part] === undefined) return current;
 ```
-
-With the old check, Add Note → Cancel left `noteDraft: ""` behind. The composer looked closed until you switched views, and then it reopened by itself.
 
 Falsy values in JavaScript: `false`, `0`, `-0`, `0n`, `""`, `null`, `undefined`, `NaN`. Any of them can be a **valid value** (an empty string, a count of 0), so a truthiness check is only safe when none of them can be.
 
@@ -2074,6 +2162,8 @@ const [created, setCreated] = useState<{
 
 The fix: the effect's **cleanup** runs both on unmount and when an `<Activity>` hides the tree, so it is the one place that covers both. Reset there:
 
+`openCreated` is an Effect Event (#26): the parents pass a new `onCreated` arrow on every render, and listing it as a dependency would restart the timer on every render.
+
 ```ts
 useEffect(() => {
   if (!created) return;
@@ -2091,8 +2181,6 @@ useEffect(() => {
   };
 }, [created]);
 ```
-
-`openCreated` is an Effect Event (#26): the parents pass a new `onCreated` arrow on every render, and listing it as a dependency would restart the timer on every render.
 
 How to spot this kind of bug: a screen that "remembers" a finished action (a success message, an open dialog, a spinner) when you come back to it. Ask: *does this route stay mounted when I leave it?*
 
@@ -2116,6 +2204,13 @@ The same field can need **different types** depending on the direction of the da
 
 So the two types describe two different things:
 
+| Syntax | Means | Example value |
+|---|---|---|
+| `x: string \| null` | key always present, value may be `null` | `{ x: null }` |
+| `x?: string` | key may be missing | `{}` |
+
+The PUT body keeps `string | null` on purpose: an edit sends `null` to **clear** a link the user deleted. A new candidate has nothing to clear.
+
 ```ts
 // types/candidate.ts
 // API → app: the key is always there; the value may be null
@@ -2135,15 +2230,11 @@ export type CreateCandidatePayload = Pick<
 };
 ```
 
-| Syntax | Means | Example value |
-|---|---|---|
-| `x: string \| null` | key always present, value may be `null` | `{ x: null }` |
-| `x?: string` | key may be missing | `{}` |
 | `x?: string \| null` | both | either |
 
-The PUT body keeps `string | null` on purpose: an edit sends `null` to **clear** a link the user deleted. A new candidate has nothing to clear.
-
 Building an object with optional keys uses a **conditional spread**. Spreading `null`, `undefined`, or `false` adds nothing:
+
+Rest destructuring (`...required`, #16) splits off the two optional fields so the rest can be copied as is.
 
 ```ts
 // lib/utils/candidate-form.ts
@@ -2158,8 +2249,6 @@ export function toCreatePayload(
   };
 }
 ```
-
-Rest destructuring (`...required`, #16) splits off the two optional fields so the rest can be copied as is.
 
 **Interview Q:** *Difference between `field?: string` and `field: string | undefined`?* With `?`, the key can be missing entirely. With `| undefined`, the key must be written but can hold `undefined`. Under `exactOptionalPropertyTypes`, `?:` also forbids explicitly setting `undefined`.
 
@@ -2184,6 +2273,8 @@ export const NEW_CANDIDATE_ID = "new";
 
 Every existing helper (`drawerHref`, `fullPageHref`, `toListQuery`), the Expand / Drawer View buttons, the drawer's focus trap and Escape, and the drafts context (keyed by ID) work for create with no changes. The views only branch on the ID:
 
+Hooks can't be called conditionally, so the hook is always called and gets `null` ("load nothing") instead of being skipped.
+
 ```ts
 // components/candidate-detail/candidate-drawer.tsx
 const isCreate = candidateId === NEW_CANDIDATE_ID;
@@ -2193,8 +2284,6 @@ const recordId = isCreate ? null : candidateId;
 const { candidate, loading, error, retry, updateStatus, updateInfo } =
   useCandidateDetail(recordId);
 ```
-
-Hooks can't be called conditionally, so the hook is always called and gets `null` ("load nothing") instead of being skipped.
 
 The trade-off: the sentinel must never be a valid real ID. UUIDs guarantee that here; with numeric IDs, `new` is also safe, but a name-based slug could clash.
 
@@ -2213,6 +2302,8 @@ Add Candidate must keep the list's filters and open the drawer on tablet/desktop
 
 The header only needs these values **when the button is clicked**, so it reads them then:
 
+Event handlers run only in the browser, after hydration, so `window` is always defined there and nothing differs between the server and client render.
+
 ```tsx
 // components/candidate-list/candidates-header.tsx
 const openCreateForm = () => {
@@ -2227,8 +2318,6 @@ const openCreateForm = () => {
 };
 ```
 
-Event handlers run only in the browser, after hydration, so `window` is always defined there and nothing differs between the server and client render.
-
 Rule: **read browser-only values in event handlers or effects, not during render**. Read them during render (with a hook) only when the rendered output itself depends on them.
 
 **Interview Q:** *What is a hydration mismatch?* The HTML the server rendered differs from the client's first render, e.g. because the client read `window.innerWidth` or `Date.now()` while rendering. React warns and may re-render the tree. Fix it by reading such values in effects/handlers, or rendering a placeholder until mounted.
@@ -2238,6 +2327,8 @@ Rule: **read browser-only values in event handlers or effects, not during render
 ### 74. `inert` for an overlay that blocks the content underneath
 
 After a successful create, the form stays on screen, blurred, under "Candidate created successfully." until the details open. A visual overlay alone isn't enough: keyboard users can still Tab into the inputs behind it, and screen readers still read them.
+
+`inert` makes a subtree unfocusable, unclickable, and hidden from assistive technology in one attribute. `SuccessMessage` has `role="status"`, so the message is announced without moving focus. React 19 accepts `inert` as a boolean prop.
 
 ```tsx
 // components/candidate-form/create-candidate-form.tsx
@@ -2254,8 +2345,6 @@ After a successful create, the form stays on screen, blurred, under "Candidate c
   )}
 </section>
 ```
-
-`inert` makes a subtree unfocusable, unclickable, and hidden from assistive technology in one attribute. `SuccessMessage` has `role="status"`, so the message is announced without moving focus. React 19 accepts `inert` as a boolean prop.
 
 | Tool | Blocks clicks | Blocks Tab | Hides from screen readers |
 |---|---|---|---|

@@ -69,6 +69,10 @@
 
 The HTML `<dialog>` element gives you a real modal for free: `showModal()` adds the backdrop, traps focus inside, closes on Esc, and puts focus back on the button that opened it. React only needs a ref to call it.
 
+- `showModal()` = modal (backdrop, focus trap, Esc). `show()` = non-modal.
+- `e.target === e.currentTarget` is true only when the click lands on the dialog itself (the backdrop area), not on its children.
+- Opening/closing is imperative (a method call), so a ref fits better than state here.
+
 ```jsx
 // components/shared/Dialog.jsx
 const Dialog = ({ label, what, project }) => {
@@ -97,14 +101,12 @@ const Dialog = ({ label, what, project }) => {
 };
 ```
 
+This CSS stops the page scrolling behind the open modal:
+
 ```css
 /* globals.css: stop the page scrolling behind an open modal */
 html:has(dialog[open]) { overflow: hidden; }
 ```
-
-- `showModal()` = modal (backdrop, focus trap, Esc). `show()` = non-modal.
-- `e.target === e.currentTarget` is true only when the click lands on the dialog itself (the backdrop area), not on its children.
-- Opening/closing is imperative (a method call), so a ref fits better than state here.
 
 **Interview Q:** *How would you build an accessible modal?* Use the native `<dialog>` with `showModal()`: it handles focus trapping, Esc, the backdrop and returning focus. Label it with `aria-labelledby`. Libraries (Radix, Headless UI) are an option when you need more control, but the native element covers most cases with zero JS weight.
 
@@ -131,7 +133,11 @@ Instead of several booleans (`isOpen`, `isAnimating`, …) that can contradict e
 const [state, setState] = useState("closed");
 const busy = state === "opening" || state === "closing";   // derived, not stored
 const open = state === "open";
+```
 
+**The toggle.** It ignores clicks during the animation, then starts the next state:
+
+```jsx
 const toggle = () => {
   if (busy) return;                 // ignore clicks during the animation
   if (state === "closed") {
@@ -142,9 +148,15 @@ const toggle = () => {
     setState("closing");
   }
 };
+```
 
+**The markup.** `data-state` exposes the state to CSS:
+
+```jsx
 <div data-state={state} className="gourd">…</div>   // CSS animates per state
 ```
+
+**The CSS.** Each state gets its own rules:
 
 ```css
 .gourd[data-state="opening"] .lid { animation: lid 3.6s ease-in-out 0.2s both; }
@@ -156,6 +168,8 @@ const toggle = () => {
 ### 4. Timers in effects, with cleanup
 
 An effect that starts a timer must clear it in the cleanup. Otherwise the timer can fire after the component unmounted, or after the state already changed.
+
+**Move on once the animation has finished.**
 
 ```jsx
 // components/hero/HeroGourd.jsx: move on once the animation has finished
@@ -173,6 +187,8 @@ useEffect(() => {
   return () => clearTimeout(timer);
 }, [state, busy]);
 ```
+
+**Hide the success message after 3 seconds.**
 
 ```jsx
 // components/contact/Contact.jsx: hide the success message after 3s
@@ -241,6 +257,9 @@ useEffect(() => {
 
 Pattern: subscribe in the effect, run once immediately for the current state, unsubscribe in the cleanup.
 
+- `{ passive: true }` promises the listener won't call `preventDefault()`, so the browser can scroll without waiting for JS.
+- The cleanup must remove the **same function reference** that was added.
+
 ```jsx
 // components/navbar/Navbar.jsx: scroll-spy
 useEffect(() => {
@@ -258,6 +277,8 @@ useEffect(() => {
 }, [isHome]);
 ```
 
+The same pattern follows the user's motion setting:
+
 ```jsx
 // components/hero/HeroGourd.jsx: follow the user's motion setting
 useEffect(() => {
@@ -268,9 +289,6 @@ useEffect(() => {
   return () => reduce.removeEventListener("change", sync);
 }, []);
 ```
-
-- `{ passive: true }` promises the listener won't call `preventDefault()`, so the browser can scroll without waiting for JS.
-- The cleanup must remove the **same function reference** that was added.
 
 **Interview Q:** *Why can't you read `window` during render in Next.js?* Components also render on the server, where `window` doesn't exist. Browser-only code goes in `useEffect` (runs only in the browser, after hydration) or in event handlers.
 
@@ -287,6 +305,8 @@ const observer = new IntersectionObserver(([entry]) => {
 observer.observe(c);
 return () => observer.disconnect();
 ```
+
+CSS pauses every animation inside when `data-paused` is true:
 
 ```css
 .caravan[data-paused="true"] * { animation-play-state: paused !important; }
@@ -318,6 +338,8 @@ All text lives in `src/data/<section>/*.js`; components only render it. Changing
 
 Both folders are organized by section, so everything for one section sits together; `utils/` keeps only real helper functions:
 
+Files were moved with `git mv` so `git log --follow` keeps each file's history. No `index.js` re-export files: imports name the file (`@/components/hero/Hero`), which keeps them explicit and easy to search. A gitignored file is ignored **by path**, so moving it means moving its `.gitignore` line too, or it would show up as a new file and could be committed by accident.
+
 ```
 src/
   components/  navbar/ hero/ about/ experience/ projects/ contact/ footer/ shared/
@@ -325,7 +347,7 @@ src/
   utils/       withBold.jsx, gourdSounds.js                                (helpers: functions)
 ```
 
-Files were moved with `git mv` so `git log --follow` keeps each file's history. No `index.js` re-export files: imports name the file (`@/components/hero/Hero`), which keeps them explicit and easy to search. A gitignored file is ignored **by path**, so moving it means moving its `.gitignore` line too, or it would show up as a new file and could be committed by accident.
+**Text and lists are plain objects.**
 
 ```js
 // data/hero/heroData.js
@@ -337,6 +359,8 @@ const heroData = {
   caravan: ["Magic gourds for sale!", "Dreams come true inside!"],
 };
 ```
+
+**Code lines are stored as data too.** Each line is a list of `[text, color]` parts:
 
 ```js
 // data/hero/gourdSnippets.js: each code line is a list of [text, color] parts
@@ -356,6 +380,10 @@ const gourdSnippets = {
 
 ### 12. Rendering a list, and keys in nested lists
 
+This renders a code snippet from data, with a list inside a list.
+
+Index keys are fine **here** because the lines never reorder, get inserted or deleted within one snippet (a new snippet remounts the whole group through its `key`). For lists that change (filters, sorting, deleting), use a stable id: `key={item.id}`.
+
 ```jsx
 // components/hero/HeroGourd.jsx: render a code snippet from data
 {gourdSnippets[tech].lines.map((parts, i) => (
@@ -366,8 +394,6 @@ const gourdSnippets = {
   </text>
 ))}
 ```
-
-Index keys are fine **here** because the lines never reorder, get inserted or deleted within one snippet (a new snippet remounts the whole group through its `key`). For lists that change (filters, sorting, deleting), use a stable id: `key={item.id}`.
 
 **Interview Q:** *When is `key={index}` a bug?* When items can be reordered, inserted or removed: React matches elements by key, so state (inputs, focus, animations) ends up attached to the wrong item.
 
@@ -388,6 +414,8 @@ const withBold = (text) =>
 
 ### 14. Form validation with an object of checks, focus the first error
 
+**The checks.** An object maps each field to its validator, in form order.
+
 ```jsx
 // components/contact/Contact.jsx
 const checks = {                              // in form order
@@ -395,7 +423,11 @@ const checks = {                              // in form order
   subject: validateRequired,
   user_message: validateRequired,
 };
+```
 
+**The submit handler.** It reads the uncontrolled inputs, runs each check, then moves focus to the first invalid field.
+
+```jsx
 const handleSubmit = async (e) => {
   e.preventDefault();
   const fields = formRef.current.elements;    // uncontrolled inputs, read on submit
@@ -460,12 +492,6 @@ The tech chips are SVG `<g>` elements, not `<button>`s, so everything a button g
 
 ### 17. `aria-disabled` vs `disabled`
 
-```jsx
-// the open/close button while the gourd animates
-<button type="button" onClick={toggle} aria-disabled={busy}
-  className="aria-disabled:opacity-55 aria-disabled:cursor-default">
-```
-
 | | `disabled` | `aria-disabled="true"` |
 |---|---|---|
 | Can be focused | No (a focused button loses focus) | Yes |
@@ -474,9 +500,17 @@ The tech chips are SVG `<g>` elements, not `<button>`s, so everything a button g
 
 Here the button is only busy for ~4s, and a keyboard user who just pressed it would lose their place with `disabled`. So: `aria-disabled` + `if (busy) return;`.
 
+```jsx
+// the open/close button while the gourd animates
+<button type="button" onClick={toggle} aria-disabled={busy}
+  className="aria-disabled:opacity-55 aria-disabled:cursor-default">
+```
+
 **Interview Q:** *When would you choose `aria-disabled`?* When the control is temporarily unavailable and focus must stay put, or when you want it discoverable (with a tooltip explaining why it's disabled).
 
 ### 18. One component, two layouts: a `preview` prop
+
+`preview` changes how many items show, the heading and the link. The home page passes it, and the full page doesn't.
 
 ```jsx
 // components/experience/Experience.jsx
@@ -535,6 +569,10 @@ useLayoutEffect(() => {
 
 DOM events travel **down** from `window` to the target (capture phase), then back **up** (bubble phase). React's `onClick` handlers (like the one inside `next/link`) run in the bubble phase. A listener added with `capture: true` on `window` runs first, so it can `preventDefault()` and take over.
 
+- **Event delegation:** one listener for every link on every page, instead of wrapping each `<Link>`.
+- Respect the user: modified clicks (Ctrl/Cmd/Shift = new tab/window), middle clicks, `target="_blank"` and downloads are left alone.
+- Lesson from measuring on a phone: first I waited for the 0.3s slide-out and *then* called `router.push()`, which added ~0.5s to every page change. Starting the navigation at the click, while the animation plays, brought it down to ~0.2s extra.
+
 ```js
 // components/shared/PageTransition.jsx: catch clicks on links to another page before next/link does
 const onClick = (e) => {
@@ -550,10 +588,6 @@ const onClick = (e) => {
 };
 window.addEventListener("click", onClick, true); // true = capture phase
 ```
-
-- **Event delegation:** one listener for every link on every page, instead of wrapping each `<Link>`.
-- Respect the user: modified clicks (Ctrl/Cmd/Shift = new tab/window), middle clicks, `target="_blank"` and downloads are left alone.
-- Lesson from measuring on a phone: first I waited for the 0.3s slide-out and *then* called `router.push()`, which added ~0.5s to every page change. Starting the navigation at the click, while the animation plays, brought it down to ~0.2s extra.
 
 **Interview Q:** *What's the difference between `stopPropagation()` and `preventDefault()`?* `preventDefault()` cancels the browser's default action (following the link) but the event keeps travelling, so other handlers still run and can check `e.defaultPrevented`. `stopPropagation()` stops the event reaching other elements' handlers but doesn't cancel the default action.
 
@@ -581,6 +615,8 @@ In this site only 5 of 14 components are client components, each for a reason:
 
 ### 22. Static export (`output: 'export'`)
 
+Each route becomes a file (`out/index.html`, `out/experience.html`), which any static host or CDN can serve.
+
 ```js
 // next.config.mjs
 const nextConfig = {
@@ -589,11 +625,11 @@ const nextConfig = {
 };
 ```
 
-Each route becomes a file (`out/index.html`, `out/experience.html`), which any static host or CDN can serve.
-
 **Interview Q:** *What do you give up with a static export?* Anything that needs a Node server at request time: API routes, server actions, middleware, ISR/on-demand revalidation, cookies/headers in server components, and the built-in image optimization.
 
 ### 23. `next/font`: self-hosted fonts as CSS variables (and variable fonts with `opsz`)
+
+`next/font` downloads the fonts at build time and serves them from your own domain (no request to Google, no privacy issue), preloads them, and generates a size-adjusted fallback font to reduce layout shift.
 
 ```js
 // app/layout.js
@@ -604,6 +640,8 @@ const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variab
 <html lang="en" className={`${display.variable} ${mono.variable}`}>
 ```
 
+The CSS uses those variables, with fallback fonts:
+
 ```css
 /* globals.css */
 @theme {
@@ -611,8 +649,6 @@ const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variab
   --font-mono: var(--nf-mono), ui-monospace, Menlo, Consolas, monospace;
 }
 ```
-
-`next/font` downloads the fonts at build time and serves them from your own domain (no request to Google, no privacy issue), preloads them, and generates a size-adjusted fallback font to reduce layout shift.
 
 **Interview Q:** *Why load only the weights you use?* Each weight is a separate file. Note the flip side: if CSS asks for a weight you didn't load (e.g. `font-semibold` = 600 with only 400/500 loaded), the browser fakes it ("synthetic bold"), which looks worse and can change text width.
 
@@ -623,6 +659,8 @@ Gotcha I hit: with only 600 and 800 loaded, `font-bold` (700) used to *snap* to 
 **Interview Q:** *Static weights or a variable font?* Few weights (1–2): static files are usually smaller. Many weights, or you want an axis like `opsz` or fine-tuned weights: one variable file is simpler and often smaller in total. Either way, check what weights your CSS actually asks for.
 
 ### 24. Metadata API
+
+Export a `metadata` object from the root layout. A page overrides only what differs.
 
 ```js
 // app/layout.js
@@ -640,6 +678,10 @@ export const metadata = { title: "Experience · Akbar Ruzi" };
 
 ### 25. `next/link` vs a plain `<a>` (and `usePathname`)
 
+- On the home page, `#about` is a same-page jump: a plain `<a>` is enough.
+- On `/experience`, the link must go to `/#about`: `Link` swaps pages without a full reload.
+- Storing a component in a variable (`const Anchor = …`) and rendering `<Anchor>` works because JSX only needs a capitalized name.
+
 ```jsx
 // components/navbar/Navbar.jsx
 const isHome = usePathname() === "/";
@@ -649,15 +691,13 @@ const to = (hash) => (isHome ? hash : `/${hash}`);
 <Anchor href={to("#about")}>About</Anchor>
 ```
 
-- On the home page, `#about` is a same-page jump: a plain `<a>` is enough.
-- On `/experience`, the link must go to `/#about`: `Link` swaps pages without a full reload.
-- Storing a component in a variable (`const Anchor = …`) and rendering `<Anchor>` works because JSX only needs a capitalized name.
-
 **Interview Q:** *What does `next/link` add over `<a>`?* Client-side navigation (no full reload, layout state kept) and automatic prefetching of the target route when the link is visible.
 
 ### 26. Layouts persist across navigations, pages remount
 
 In the App Router, going from `/` to `/experience` swaps only the **page** inside the layout. The **layout** doesn't unmount or re-render, so components in it keep their state, refs, timers and event listeners. Put things there that must survive a page change.
+
+The page transition has two halves: on the old page a click marks "leaving" (a ref), and when the new page renders, an effect on `usePathname()` sees that ref and plays the slide-in. Both halves must run in the **same component instance**. Inside each page it would unmount with the old page and lose the ref, so the new page wouldn't know a transition was in progress. (The plain-HTML design does full reloads, so it has to pass a flag through `sessionStorage` instead.)
 
 ```jsx
 // app/layout.js: the layout stays a server component; PageTransition is a small client component inside it
@@ -667,8 +707,6 @@ In the App Router, going from `/` to `/experience` swaps only the **page** insid
 </body>
 ```
 
-The page transition has two halves: on the old page a click marks "leaving" (a ref), and when the new page renders, an effect on `usePathname()` sees that ref and plays the slide-in. Both halves must run in the **same component instance**. Inside each page it would unmount with the old page and lose the ref, so the new page wouldn't know a transition was in progress. (The plain-HTML design does full reloads, so it has to pass a flag through `sessionStorage` instead.)
-
 **Interview Q:** *Where do you keep UI that must survive navigation (a player, a progress bar, a transition)?* In a layout above the pages that change. Also useful: `template.js` is the opposite, a layout that **does** remount on every navigation.
 
 ### 27. Hydration mismatches and `suppressHydrationWarning`
@@ -677,11 +715,15 @@ Hydration = React attaching to server-rendered HTML. If the first client render 
 
 Two cases in this project:
 
+**Case 1: something else changes the HTML before React loads.**
+
 ```jsx
 // 1. Browser extensions / Chrome on iOS add attributes before React loads
 <html lang="en" suppressHydrationWarning>          // only this tag's attributes, not its children
 <input suppressHydrationWarning />                 // autofill attribute added by Chrome on iOS
 ```
+
+**Case 2: the server can't know the user's setting.** CSS decides instead:
 
 ```css
 /* 2. Reduced motion is handled in CSS, not with JS state in the first render.
@@ -701,6 +743,9 @@ Two cases in this project:
 
 `clamp(MIN, PREFERRED, MAX)` picks the preferred value (usually viewport-based) but never goes below MIN or above MAX. One line replaces a stack of media queries, and sizes grow smoothly instead of jumping at breakpoints.
 
+- `min(a, b)` = "at most": the smaller wins. `max(a, b)` = "at least": the bigger wins.
+- Accessibility: a font size in pure `vw` doesn't grow when the user zooms text. Keep a `px`/`rem` part (or the MIN/MAX bounds) in it.
+
 ```css
 /* globals.css: gap around the cards and their inner padding, 16px on phones up to 48/56px on desktop */
 :root {
@@ -711,6 +756,8 @@ Two cases in this project:
 body { padding-left: max(var(--outer), env(safe-area-inset-left, 0px)); }
 ```
 
+The same functions work inside Tailwind classes:
+
 ```jsx
 // Hero.jsx: the big heading scales from 40px to 76px
 <h1 className="text-[clamp(40px,7vw,76px)] font-extrabold">…</h1>
@@ -718,14 +765,13 @@ body { padding-left: max(var(--outer), env(safe-area-inset-left, 0px)); }
 <dialog className="w-[min(100%-32px,440px)]">…</dialog>
 ```
 
-- `min(a, b)` = "at most": the smaller wins. `max(a, b)` = "at least": the bigger wins.
-- Accessibility: a font size in pure `vw` doesn't grow when the user zooms text. Keep a `px`/`rem` part (or the MIN/MAX bounds) in it.
-
 **Interview Q:** *How do you do fluid typography?* `clamp()` with a viewport-based middle value and readable min/max bounds; better with `rem` bounds so it respects the user's font size setting.
 
 ### 29. CSS Grid: `minmax(0, 1fr)` and `min-width: 0`
 
 `1fr` really means `minmax(auto, 1fr)`: a column never gets narrower than its content's minimum width. One long word, URL or code line can push the column wider and cause horizontal scroll. `minmax(0, 1fr)` lets the column shrink.
+
+The same problem exists for grid and flex **items**: they default to `min-width: auto`. That's why the form card also has `min-w-0`.
 
 ```jsx
 // Contact.jsx: intro | form, 0.9 : 1.1, stacked below 1024px
@@ -738,13 +784,13 @@ body { padding-left: max(var(--outer), env(safe-area-inset-left, 0px)); }
                max-lg:grid-cols-[36px_minmax(0,1fr)] max-sm:grid-cols-1">
 ```
 
-The same problem exists for grid and flex **items**: they default to `min-width: auto`. That's why the form card also has `min-w-0`.
-
 **Interview Q:** *My grid column overflows even though it's `1fr`. Why?* The implicit minimum is the content's min-content width. Use `minmax(0, 1fr)`, or `min-width: 0` (`overflow: hidden` also works) on the item.
 
 ### 30. Stacking contexts: `z-index` and `isolation: isolate`
 
 `z-index` only compares elements **inside the same stacking context**. A new context starts on an element with `position` + `z-index`, `opacity` below 1, any `transform`, `filter`, or `isolation: isolate`. Children can never escape their parent's context, however big their `z-index`.
+
+In this project: the sticky nav is `z-50`; the page-transition progress bar is `z-index: 100` so it's above the nav; and since the scroll reveal and page transitions put `transform` on sections, each section becomes its own stacking context (fine here, because nothing inside them needs to overlap the nav).
 
 ```jsx
 // Hero.jsx (an earlier version; the watermark was removed later, the pattern still applies):
@@ -758,8 +804,6 @@ The same problem exists for grid and flex **items**: they default to `min-width:
   </span>
 </div>
 ```
-
-In this project: the sticky nav is `z-50`; the page-transition progress bar is `z-index: 100` so it's above the nav; and since the scroll reveal and page transitions put `transform` on sections, each section becomes its own stacking context (fine here, because nothing inside them needs to overlap the nav).
 
 **Interview Q:** *I set `z-index: 9999` and it's still behind. Why?* An ancestor created a stacking context with a lower order (often a `transform` or `opacity`), and the element can't leave it. Fix the ancestor's stacking, or use `isolation: isolate` deliberately to contain a local `z-index`.
 
@@ -782,6 +826,9 @@ Other common uses: `form:has(:invalid)` to style the whole form, `.card:has(img)
 
 A CSS transition needs a "before" value, but an element that has just appeared (or switched from `display: none`) has none, so it pops in. `@starting-style` gives it one: the styles it transitions **from** on its first frame. Tailwind's `starting:` variant writes it.
 
+- `:empty` matches an element with no children (not even text), so the status box takes no space until there's a message.
+- Older browsers just skip the animation; the content still appears.
+
 ```jsx
 // Dialog.jsx: the modal fades and grows in when opened (scale .95 → 1, opacity 0 → 1)
 <dialog className="scale-95 opacity-0 transition duration-200
@@ -792,14 +839,13 @@ A CSS transition needs a "before" value, but an element that has just appeared (
 <p role="status" className="transition duration-300 empty:hidden starting:translate-y-1 starting:opacity-0">
 ```
 
-- `:empty` matches an element with no children (not even text), so the status box takes no space until there's a message.
-- Older browsers just skip the animation; the content still appears.
-
 **Interview Q:** *Why doesn't my transition run when an element goes from `display: none` to `block`?* There's no rendered "before" state to transition from. Use `@starting-style` (plus `transition-behavior: allow-discrete` if you also animate `display`), or animate with `@keyframes`.
 
 ### 33. Safe-area insets on notched phones: `env(safe-area-inset-*)`
 
 On phones with a notch or rounded corners, `env(safe-area-inset-top/left/right/bottom)` gives the space the hardware covers (in landscape the notch is on a side). The second argument is the fallback for browsers and devices without it.
+
+The insets are only non-zero when the page opts into drawing under the notch (`viewport-fit=cover` in the viewport meta). This site doesn't set it yet, so today the `0px` fallbacks apply and the browser keeps the page clear of the notch itself; the CSS is ready if it ever does.
 
 ```css
 /* globals.css: side padding is at least --outer, more if the notch needs it */
@@ -811,29 +857,31 @@ body {
 body::before { height: calc(env(safe-area-inset-top, 0px) + 10px); }
 ```
 
+The sticky nav uses the same inset:
+
 ```jsx
 // Navbar.jsx: the sticky nav stops 10px below the notch
 <nav className="sticky top-[calc(env(safe-area-inset-top,0px)+10px)] z-50">
 ```
 
-The insets are only non-zero when the page opts into drawing under the notch (`viewport-fit=cover` in the viewport meta). This site doesn't set it yet, so today the `0px` fallbacks apply and the browser keeps the page clear of the notch itself; the CSS is ready if it ever does.
-
 **Interview Q:** *How do you keep content clear of the notch?* `env(safe-area-inset-*)` in padding and positions, usually inside `max()` with your normal spacing.
 
 ### 34. Readable text: `text-wrap: balance` and `ch` widths
+
+- `text-wrap: balance` makes the lines of a short block about equal length. It's meant for headings and short text (browsers limit it to a few lines). For paragraphs, `text-wrap: pretty` only avoids a lonely last word.
+- `ch` is the width of the "0" character in the current font, so `62ch` is roughly 60–75 characters per line, the comfortable reading range.
 
 ```css
 /* globals.css: headings balance their lines (no single word left alone on the last line) */
 h1, h2, h3 { text-wrap: balance; }
 ```
 
+Paragraphs use a `ch` width:
+
 ```jsx
 // About.jsx: paragraphs stop at ~62 characters per line, however wide the card is
 <p className="max-w-[62ch]">…</p>
 ```
-
-- `text-wrap: balance` makes the lines of a short block about equal length. It's meant for headings and short text (browsers limit it to a few lines). For paragraphs, `text-wrap: pretty` only avoids a lonely last word.
-- `ch` is the width of the "0" character in the current font, so `62ch` is roughly 60–75 characters per line, the comfortable reading range.
 
 **Interview Q:** *Why limit line length?* Very long lines make it hard for the eye to find the start of the next line; about 45–75 characters reads best. `max-width` in `ch` keeps that true at any screen size and font size.
 
@@ -878,6 +926,9 @@ const fly = (dx, dy, d) => ({ "--dx": `${dx}px`, "--dy": `${dy}px`, "--d": `${d}
 
 Closing the gourd reuses the opening keyframes with `animation-direction: reverse`. The delays are mirrored with `calc()`, so the last item out goes back in first.
 
+- `both` (fill-mode) holds the first keyframe before the delay and the last one after the end. With `reverse`, "first" is the 100% frame, so items stay visible until their turn.
+- Use a different easing for the way back: an ease-out in reverse would feel like an ease-in.
+
 ```css
 .gourd[data-state="closing"] .pop {
   animation: pop-out 0.75s cubic-bezier(0.7, -0.15, 0.8, 0.2)
@@ -885,14 +936,13 @@ Closing the gourd reuses the opening keyframes with `animation-direction: revers
 }
 ```
 
-- `both` (fill-mode) holds the first keyframe before the delay and the last one after the end. With `reverse`, "first" is the 100% frame, so items stay visible until their turn.
-- Use a different easing for the way back: an ease-out in reverse would feel like an ease-in.
-
 **Interview Q:** *What does `animation-fill-mode: both` do?* Applies the starting keyframe during the delay (`backwards`) and keeps the end keyframe after the animation (`forwards`).
 
 ### 38. `prefers-reduced-motion`
 
 Some users get dizzy or nauseous from motion (vestibular disorders) and turn on "Reduce motion" in their OS. Respect it.
+
+In this project reduced motion doesn't remove features: the gourd shows open with its chips and code, and the caravan stands still with its speech bubble.
 
 ```css
 /* opt-in: animations only exist when the user hasn't asked for less motion */
@@ -905,6 +955,8 @@ Some users get dizzy or nauseous from motion (vestibular disorders) and turn on 
 }
 ```
 
+Two ways to write it: `motion-reduce:` takes the animation away (opt-out), `motion-safe:` only adds it when the user hasn't asked for less motion (opt-in). Opt-in is the safer default: if you forget a case, nothing moves. Note the pill keeps its color change with reduced motion: a color fade isn't movement.
+
 ```jsx
 // Tailwind variants for one-off cases
 <button className="motion-reduce:hidden">…</button>
@@ -914,10 +966,6 @@ Some users get dizzy or nauseous from motion (vestibular disorders) and turn on 
 // but only wiggle when motion is OK (variants stack: motion-safe + hover)
 <li className="cursor-default transition-colors hover:bg-cta hover:text-white motion-safe:hover:animate-wiggle">
 ```
-
-Two ways to write it: `motion-reduce:` takes the animation away (opt-out), `motion-safe:` only adds it when the user hasn't asked for less motion (opt-in). Opt-in is the safer default: if you forget a case, nothing moves. Note the pill keeps its color change with reduced motion: a color fade isn't movement.
-
-In this project reduced motion doesn't remove features: the gourd shows open with its chips and code, and the caravan stands still with its speech bubble.
 
 **Interview Q:** *Remove all animation, or reduce it?* Reduce: keep the content and meaning, drop large movement, parallax, auto-playing loops and smooth scrolling. Short fades are usually fine.
 
@@ -955,6 +1003,11 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 
 ### 41. Tailwind v4: `@theme` tokens and `@layer`
 
+- v4 has no `tailwind.config.js`: configuration lives in CSS.
+- An `--animate-*` token can reuse keyframes defined anywhere in the CSS: `--animate-wiggle: wiggle 0.5s ease-in-out;` gives `animate-wiggle` for the About pills from the same `@keyframes wiggle` the gourd chips already use (one animation, two places).
+- Tailwind only emits the theme variables and utilities you actually use, so unused tokens cost nothing in the final CSS.
+- Cascade layers (`@layer`) decide priority by layer order, not selector specificity, so a utility class always beats a component rule.
+
 ```css
 @import "tailwindcss";
 
@@ -970,14 +1023,11 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 }
 ```
 
-- v4 has no `tailwind.config.js`: configuration lives in CSS.
-- An `--animate-*` token can reuse keyframes defined anywhere in the CSS: `--animate-wiggle: wiggle 0.5s ease-in-out;` gives `animate-wiggle` for the About pills from the same `@keyframes wiggle` the gourd chips already use (one animation, two places).
-- Tailwind only emits the theme variables and utilities you actually use, so unused tokens cost nothing in the final CSS.
-- Cascade layers (`@layer`) decide priority by layer order, not selector specificity, so a utility class always beats a component rule.
-
 **Interview Q:** *Why use cascade layers?* To control priority between groups of CSS (reset → base → components → utilities) without specificity wars or `!important`.
 
 ### 42. Sticky nav: `scroll-padding-top` and smooth scrolling (and doing the #section scroll yourself)
+
+`scroll-margin-top` on each section only fixes anchor jumps. `scroll-padding-top` on the scroll container also applies when the browser scrolls a focused element into view, so keyboard users never get a focused link hidden under the nav.
 
 ```css
 html {
@@ -986,14 +1036,16 @@ html {
 }
 ```
 
-`scroll-margin-top` on each section only fixes anchor jumps. `scroll-padding-top` on the scroll container also applies when the browser scrolls a focused element into view, so keyboard users never get a focused link hidden under the nav.
-
 **Interview Q:** *Clicking `#contact` hides the heading under the sticky header. Fix?* `scroll-padding-top` on `html` (or `scroll-margin-top` on the targets), equal to the header height plus some space.
 
 **When CSS alone wasn't enough (measured in this project):**
 - **Landing spot off by 20px.** The scroll reveal (43) moves each section down 20px with `transform` until it's on screen. The browser's #hash scroll measures the *transformed* box, so sections landed at 92px instead of 112px. `getBoundingClientRect()` includes transforms; `offsetTop` doesn't (it's layout only), so measure with `offsetTop`.
 - **Jump instead of glide after a page change.** From `/experience`, `/#about` goes through Next's router, which scrolls to the hash with smooth scrolling switched off: a jump. And gliding from the top of a long page would feel slow anyway.
 - **Underline flicker.** During a long glide the scroll-spy underlined every section passed on the way, and none in the gaps between them.
+
+**Measure without transforms, then glide.**
+
+- Moving focus to a non-interactive target needs `tabindex="-1"` (focusable by script, not in the Tab order); hide its outline, since it isn't a control.
 
 ```js
 // utils/scrollToHash.js (shortened): measure without transforms, glide, tell the scroll-spy where it's going
@@ -1007,6 +1059,10 @@ el.setAttribute("tabindex", "-1");
 el.focus({ preventScroll: true });
 ```
 
+**Handle same-page and other-page links.**
+
+- `history.pushState` changes the URL without scrolling or reloading (setting `location.hash` would trigger the browser's own jump). Next.js App Router supports native `pushState`, and Back still walks through the sections.
+
 ```js
 // components/shared/PageTransition.jsx: same page → glide + update the URL without a jump;
 // another page → let the router not scroll, then jump near the section and glide the last 200px
@@ -1014,14 +1070,16 @@ if (url.pathname === location.pathname) { scrollToHash(url.hash); history.pushSt
 else router.push(url.pathname + url.hash, { scroll: false }); // …then scrollToHash(hash, { lead: 200 }) once it renders
 ```
 
-- `history.pushState` changes the URL without scrolling or reloading (setting `location.hash` would trigger the browser's own jump). Next.js App Router supports native `pushState`, and Back still walks through the sections.
-- Moving focus to a non-interactive target needs `tabindex="-1"` (focusable by script, not in the Tab order); hide its outline, since it isn't a control.
-
 **Interview Q:** *Your "scroll to section" lands a little off, but only sometimes. What could it be?* A `transform` on the target or an ancestor (an entrance animation, a sticky header that shrinks), which `getBoundingClientRect` and the browser's anchor scroll both include. Measure layout with `offsetTop` / `offsetParent`, or wait until the animation has finished.
 
 ### 43. Scroll-driven animations (`animation-timeline: view()`)
 
 A normal CSS animation runs on a clock (e.g. 0.5s). A scroll-driven animation runs on the **scroll position**: `view()` ties its progress to where the element is in the viewport, so scrolling forward plays it and scrolling back rewinds it. No JavaScript, no scroll listener, and the browser can run it off the main thread.
+
+- **`animation-range`** picks which part of the element's trip through the viewport plays the animation. `entry` is while it comes in from the bottom; `cover` is its whole trip, from first pixel in to last pixel out.
+- Gotcha I hit: the usual `entry 0% cover 30%` depends on the element's height. My Experience card is ~1,600px tall, so it was still half faded with its top almost under the nav. A fixed length (`entry 240px`) finishes at the same point for every card.
+- `both` (fill mode) keeps the end state for cards already scrolled past, so jumping down with a nav link never leaves a faded card above.
+- Progressive enhancement: `@supports` means unsupported browsers get the plain page, never hidden content.
 
 ```css
 /* globals.css: each section card fades and slides up as it scrolls into view */
@@ -1040,11 +1098,6 @@ A normal CSS animation runs on a clock (e.g. 0.5s). A scroll-driven animation ru
 }
 ```
 
-- **`animation-range`** picks which part of the element's trip through the viewport plays the animation. `entry` is while it comes in from the bottom; `cover` is its whole trip, from first pixel in to last pixel out.
-- Gotcha I hit: the usual `entry 0% cover 30%` depends on the element's height. My Experience card is ~1,600px tall, so it was still half faded with its top almost under the nav. A fixed length (`entry 240px`) finishes at the same point for every card.
-- `both` (fill mode) keeps the end state for cards already scrolled past, so jumping down with a nav link never leaves a faded card above.
-- Progressive enhancement: `@supports` means unsupported browsers get the plain page, never hidden content.
-
 **Interview Q:** *Scroll-driven animations vs an `IntersectionObserver` reveal?* CSS: zero JS, follows the scroll exactly (also backwards), runs on the compositor; but newer browser support. `IntersectionObserver`: works everywhere and can trigger time-based animations once, but needs JS and care so content isn't hidden if the script fails.
 
 ---
@@ -1054,6 +1107,11 @@ A normal CSS animation runs on a clock (e.g. 0.5s). A scroll-driven animation ru
 ### 44. Web Audio API: sounds without audio files
 
 The open/close sounds are generated: an oscillator gliding in pitch, plus a burst of filtered noise, shaped by a volume envelope.
+
+- **Autoplay policy:** browsers block audio until the user interacts with the page, so the context is created inside a click handler.
+- Scheduling with `c.currentTime + delay` is sample-accurate, unlike `setTimeout`.
+- `exponentialRampToValueAtTime` can't reach 0, so the envelope ramps to `0.0001`.
+- Wrapped in `try/catch`: no sound is fine, a crash in the click handler is not.
 
 ```js
 // utils/gourdSounds.js
@@ -1068,7 +1126,11 @@ const tone = (c, out, { type, f0, f1, t, peak, attack, decay, glide }) => {
   osc.start(t);
   osc.stop(t + attack + decay + 0.05);
 };
+```
 
+**One shared context.** It's created on the first click:
+
+```js
 // one shared AudioContext, created on the first click
 const audio = () => {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1079,16 +1141,13 @@ const audio = () => {
 export const playOpen = () => play(cork, 0.67);   // timed to the lid coming off
 ```
 
-- **Autoplay policy:** browsers block audio until the user interacts with the page, so the context is created inside a click handler.
-- Scheduling with `c.currentTime + delay` is sample-accurate, unlike `setTimeout`.
-- `exponentialRampToValueAtTime` can't reach 0, so the envelope ramps to `0.0001`.
-- Wrapped in `try/catch`: no sound is fine, a crash in the click handler is not.
-
 **Interview Q:** *Why might audio not play on page load?* Autoplay policies: an `AudioContext` created without a user gesture starts `suspended`. Create or `resume()` it in response to a click or key press.
 
 ### 45. Restarting a CSS animation from JavaScript
 
 Setting the same `animation` value again does nothing. Remove it, force the browser to apply that, then put it back.
+
+In React, changing the element's `key` (concept 5) does the same thing more declaratively.
 
 ```js
 // components/hero/Caravan.jsx
@@ -1097,8 +1156,6 @@ void b.offsetWidth;            // reading layout forces a reflow, so "none" take
 b.style.animation = "";        // back to the stylesheet's animation: it starts over
 b.style.animationDelay = `${delay}s`;
 ```
-
-In React, changing the element's `key` (concept 5) does the same thing more declaratively.
 
 **Interview Q:** *Why does `void el.offsetWidth` work?* Style changes are batched until the browser next needs layout. Reading a layout property flushes them, so the browser sees "no animation" before it sees the animation again.
 
