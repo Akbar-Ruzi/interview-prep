@@ -267,12 +267,21 @@ if (!EMAIL_REGEX.test(email)) {
 }
 ```
 
-Finally, check the password's length. bcrypt has a practical 72-byte limit, so the route enforces a limit at input. **Known issue:** this check counts characters, not bytes (see [Hashing passwords with bcrypt](../auth/auth-from-StackMeet.md)).
+Finally, check the password's length. There are two separate checks: a minimum of 8 characters, and a maximum of 64 characters and 72 bytes. bcrypt only uses the first 72 bytes, so the byte check is still needed for passwords with emoji or accented letters (see [Hashing passwords with bcrypt](../auth/auth-from-StackMeet.md)).
 
 ```ts
-if (password.length < 8 || password.length > 72) {
+if (password.length < 8) {
   return NextResponse.json(
-    { message: "Password must be between 8 and 72 characters" },
+    { message: "Password must be at least 8 characters" },
+    { status: 400 }
+  );
+}
+
+// bcrypt only uses the first 72 bytes, and characters like emoji take more than one byte,
+// so a password within the character limit can still be too long for bcrypt
+if (password.length > 64 || Buffer.byteLength(password, "utf8") > 72) {
+  return NextResponse.json(
+    { message: "Password is too long. Please use a shorter one." },
     { status: 400 }
   );
 }

@@ -35,7 +35,7 @@ const isPasswordValid = await bcrypt.compare(password, user.password);
 - **Salt:** bcrypt adds a random salt to each hash, so two users with the same password get different hashes. The salt is stored inside the hash, which is why `compare` doesn't need it passed in.
 - **Cost factor (12):** the deliberately slow work makes brute-force attacks expensive. Raising it by 1 doubles the work.
 - **Why not SHA-256:** it's designed to be fast, which helps attackers guess passwords quickly.
-- **Bug I found:** bcrypt only uses the first 72 **bytes**, but my check counted characters, and non-ASCII characters take more than one byte. The correct check is `Buffer.byteLength(password, 'utf8')`.
+- **Bug I found and fixed:** bcrypt only uses the first 72 **bytes**, but my check counted characters, and non-ASCII characters take more than one byte. For example, 30 emoji are only 60 in `password.length` but take 120 bytes, so bcrypt would have ignored part of the password. The route now uses `Buffer.byteLength(password, 'utf8')`, and also limits passwords to 64 characters.
 
 **Interview Q:** *How should passwords be stored?* Never as plain text. Store a salted hash from a slow algorithm designed for passwords, such as bcrypt or Argon2, and verify logins with its compare function.
 
