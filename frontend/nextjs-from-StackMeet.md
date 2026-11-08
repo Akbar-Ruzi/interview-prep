@@ -17,6 +17,10 @@
 - [Next.js rendering and config](#nextjs-rendering-and-config)
   6. `cacheComponents`: "Uncached data was accessed outside of `<Suspense>`"
   7. Using `rewrites` as a reverse proxy for analytics
+- [React hooks](#react-hooks)
+  8. `useDropdownMenu`: click outside, focus and arrow keys in a custom hook
+- [React components](#react-components)
+  9. `AuthPanel`: one form for two tabs, a typed input wrapper, and an auth check first
 
 ---
 
@@ -389,3 +393,271 @@ posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
 ```
 
 **Interview Q:** *What's the difference between a redirect and a rewrite?* A redirect sends the browser to a new URL with a 3xx response. A rewrite serves the content from another location while keeping the original URL.
+
+---
+
+## React hooks
+
+### 8. `useDropdownMenu`: click outside, focus and arrow keys in a custom hook
+
+The account menu's behavior lives in a [custom hook](./typescript-react-nextjs-from-Talent-Pipeline-Tracker.md#18-custom-hooks), and the component keeps only the markup. The hook file has no `"use client"` of its own, because it's only imported by a component that does.
+
+**The state and the refs.** `isOpen` changes what's on screen, so it's state. The three refs only point at DOM elements, and the render output doesn't depend on them, so they don't need to trigger a re-render ([`useRef` vs `useState`](./typescript-react-nextjs-from-Talent-Pipeline-Tracker.md#22-useref-vs-usestate)).
+
+```ts
+// hooks/useDropdownMenu.ts
+const [isOpen, setIsOpen] = useState(false);
+const containerRef = useRef<HTMLSpanElement>(null); // wraps the button and the menu
+const buttonRef = useRef<HTMLButtonElement>(null);  // gets focus back on Escape
+const menuRef = useRef<HTMLDivElement>(null);       // used to find the menu items
+```
+
+**Listen only while the menu is open.** With `[isOpen]` as the dependency, the effect runs each time the menu opens or closes. The early return means a closed menu adds no listeners to the page.
+
+```ts
+useEffect(() => {
+  if (!isOpen) return;
+  // focus and listeners go here
+}, [isOpen]);
+```
+
+**Moving focus when it opens.** Effects run after React has updated the DOM, so `menuRef.current` already points at the menu here. `querySelectorAll` returns a `NodeList`, which has no `.indexOf()`, so the spread makes it a real array. `items` is a function so each call reads the current items.
+
+```ts
+const items = () => [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+items()[0]?.focus();
+```
+
+**Clicking outside.** `.contains()` is true when the clicked element is the container or anything inside it. The `as Node` is needed because `e.target` is typed as the broader `EventTarget`.
+
+```ts
+const handlePointerDown = (e: PointerEvent) => {
+  if (!containerRef.current?.contains(e.target as Node)) setIsOpen(false);
+};
+```
+
+The container wraps the **button as well as the menu**, and that matters. If only the menu counted as inside, pressing the open button would close the menu on `pointerdown`, then the `click` that follows would toggle it open again, so it could never be closed that way.
+
+**Escape.** The menu closes and focus goes back to the button. Otherwise the focused item is removed from the page and a keyboard user loses their place.
+
+```ts
+if (e.key === "Escape") {
+  setIsOpen(false);
+  buttonRef.current?.focus();
+}
+```
+
+**Arrow keys that wrap around.** `preventDefault` stops the page from scrolling. The last line finds the next position and wraps at both ends.
+
+```ts
+if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+  e.preventDefault();
+  const all = items();
+  const step = e.key === "ArrowDown" ? 1 : -1;
+  const current = all.indexOf(document.activeElement as HTMLElement);
+  all[(current + step + all.length) % all.length]?.focus();
+}
+```
+
+Adding `all.length` matters because JavaScript's `%` keeps the sign of the left side, so `-1 % 3` is `-1`, not `2`. With 3 items:
+
+| Focus is on | Key | Calculation | Moves to |
+|---|---|---|---|
+| Index 2 (last) | ArrowDown | `(2 + 1 + 3) % 3` | 0 (first) |
+| Index 0 (first) | ArrowUp | `(0 - 1 + 3) % 3` | 2 (last) |
+
+**Known edge case:** if focus isn't on an item, `indexOf` returns `-1`. ArrowDown still lands on the first item, but ArrowUp gives `(-1 - 1 + 3) % 3 = 1`, the second-to-last item rather than the last.
+
+**Registering and removing the listeners.** The cleanup runs when the menu closes and when the component unmounts ([effect cleanup](./typescript-react-nextjs-from-Talent-Pipeline-Tracker.md#20-useeffect-cleanup-and-dependency-arrays)). `removeEventListener` only works when given the same function that was added, which is why the handlers are named variables instead of inline arrow functions.
+
+```ts
+document.addEventListener("pointerdown", handlePointerDown);
+document.addEventListener("keydown", handleKeyDown);
+return () => {
+  document.removeEventListener("pointerdown", handlePointerDown);
+  document.removeEventListener("keydown", handleKeyDown);
+};
+```
+
+**What the hook hands back.** The component gets values and actions, and never touches `setIsOpen`. `toggle` uses a [functional update](./typescript-react-nextjs-from-Talent-Pipeline-Tracker.md#19-usestate-and-functional-updates) so it always flips the latest value.
+
+```ts
+return {
+  isOpen,
+  toggle: () => setIsOpen((open) => !open),
+  close: () => setIsOpen(false),
+  containerRef,
+  buttonRef,
+  menuRef,
+};
+```
+
+**Interview Q:** *How do you detect a click outside an element in React?* Put a ref on the element, listen on `document`, and check `ref.current.contains(e.target)`. Add the listener in an effect and remove it in the cleanup.
+
+**Interview Q:** *Why store a DOM element in `useRef` instead of `useState`?* Changing a ref doesn't cause a re-render, and the element is only needed to call methods like `.focus()`. Keeping it in state would add renders for no visible change.
+
+**Interview Q:** *Why can you call `.focus()` on the menu inside `useEffect`?* The effect runs after React has committed the update to the DOM, so the menu exists and the ref is attached. During render it wouldn't exist yet.
+
+**Interview Q:** *Why doesn't `removeEventListener(() => ...)` work with a new arrow function?* It matches by function reference. A new arrow function is a different object, so nothing gets removed and the original listener stays active.
+
+**Interview Q:** *How do you wrap an index in both directions?* Use `(index + step + length) % length`. Adding `length` first keeps the value positive, because `%` in JavaScript can return a negative number.
+
+**Interview Q:** *What keyboard behavior does an accessible dropdown menu need?* Focus moves into the menu when it opens, arrow keys move between items, and Escape closes it and returns focus to the button that opened it. `aria-expanded` and `aria-haspopup` tell screen readers its state.
+
+---
+
+## React components
+
+### 9. `AuthPanel`: one form for two tabs, a typed input wrapper, and an auth check first
+
+Sign in and Create account are one form. The component only renders: the tab state and submit logic come from `useAuthForm` ([auth notes #7](../auth/auth-from-StackMeet.md)).
+
+**One piece of state drives the screen.** Only `mode` is stored. `isSignUp` and `copy` are worked out from it on each render, so they can't get out of sync ([derived values](./typescript-react-nextjs-from-Talent-Pipeline-Tracker.md#24-derived-values-instead-of-state)).
+
+```tsx
+// components/auth/AuthPanel.tsx
+const { mode, setMode, isSubmitting, handleSubmit } = useAuthForm(initialMode);
+const isSignUp = mode === "sign-up";
+const copy = COPY[mode];
+```
+
+**A lookup object instead of many ternaries.** Each tab's text sits together, and the JSX just reads `copy.heading`. If `COPY` were missing a key that `AuthMode` allows, `COPY[mode]` would be a compile error.
+
+```tsx
+const COPY = {
+  "sign-in": { heading: "Welcome back", cta: "Sign in", switchLink: "Create one" },
+  "sign-up": { heading: "Create your account", cta: "Create account", switchLink: "Sign in" },
+};
+```
+
+**Rendering the tabs from an array.** The type on `TABS` means each `mode` must be a valid `AuthMode`. `aria-selected` tells screen readers which tab is active, because color alone doesn't.
+
+```tsx
+const TABS: { mode: AuthMode; label: string }[] = [
+  { mode: "sign-in", label: "Sign in" },
+  { mode: "sign-up", label: "Create account" },
+];
+
+{TABS.map((tab) => (
+  <button key={tab.mode} type="button" role="tab" aria-selected={tab.mode === mode} onClick={() => setMode(tab.mode)}>
+    {tab.label}
+  </button>
+))}
+```
+
+`type="button"` matters for any button inside a form, because a button with no type defaults to `submit`. These tabs are outside the form, so here it's just a safe habit. **Known limitation:** a full ARIA tabs pattern also has `role="tabpanel"` and arrow-key navigation between tabs. This follows the design's markup, which only has the roles above.
+
+**Why typed text survives switching tabs.** The name field is added and removed, but the email input keeps what the user typed. React matches elements by their position among siblings. When the condition is false, `false` still fills that position, so the email field stays in the same slot and React reuses the same DOM input.
+
+```tsx
+<form onSubmit={handleSubmit} noValidate>
+  {isSignUp && <AuthField id="auth-name" name="name" label="name" type="text" required />}
+  <AuthField id="auth-email" name="email" label="email" type="email" required />
+</form>
+```
+
+`noValidate` turns off the browser's own error bubbles. The server still validates everything.
+
+**One password input, two meanings.** The `autoComplete` value tells password managers whether to fill a saved password or suggest a new one.
+
+```tsx
+autoComplete={isSignUp ? "new-password" : "current-password"}
+```
+
+**A typed wrapper around `<input>`.** `ComponentProps<"input">` gives the wrapper every real input prop, such as `type`, `name` and `placeholder`, without listing them. The intersection adds `label` and `hint`, and makes `id` required so the label can always connect to its input. The rest pattern takes out what the wrapper uses, and the spread passes everything else on.
+
+```tsx
+// components/auth/AuthField.tsx
+type AuthFieldProps = ComponentProps<"input"> & {
+  id: string;
+  label: string;
+  hint?: string;
+};
+
+const AuthField = ({ id, label, hint, ...inputProps }: AuthFieldProps) => (
+  <div>
+    <label htmlFor={id}>{label}</label>
+    <input id={id} className="..." {...inputProps} />
+    {hint && <span>{hint}</span>}
+  </div>
+);
+```
+
+Order matters with a spread: later props win. Because `{...inputProps}` comes after `className`, a caller's `className` would replace the wrapper's styles entirely.
+
+**Checking auth before the panel renders.** My first version put the auth check beside the panel, so a signed-in user could briefly see the form before being redirected. Putting the check at the top of the page fixed that but failed `npm run build`, because `auth()` reads cookies and `cacheComponents` requires that to be inside `<Suspense>` (see #6). The working version puts the check and the panel in one async component, inside the boundary.
+
+```tsx
+// app/auth/sign-in/page.tsx
+async function SignInContent({ searchParams }: SignInPageProps) {
+  const session = await auth();
+  if (session?.user) redirect("/");
+  const initialMode = parseAuthMode(await searchParams);
+  return <AuthPanel key={initialMode} initialMode={initialMode} />;
+}
+
+export default function SignInPage({ searchParams }: SignInPageProps) {
+  return (
+    <div data-full-width className="...">
+      <Suspense fallback={null}>
+        <SignInContent searchParams={searchParams} />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+The type check and lint both passed on the broken version. Only the build prerenders pages, so only the build can catch it.
+
+**Keeping an old URL working.** Creating an account used to be its own page. Now `/auth/sign-up` only redirects, so old links still work. `redirect()` from a Server Component sends a 307 temporary redirect, and because this page reads nothing per visitor, it's built as a static route.
+
+```tsx
+// app/auth/sign-up/page.tsx
+export default function SignUpPage() {
+  redirect("/auth/sign-in?tab=create");
+}
+```
+
+**Opening a tab from the URL.** The parsing is a plain function in `lib/`, not in the page. `searchParams` values are whatever someone typed, so only the exact value `create` opens that tab, and anything else falls back to Sign in. `firstParam` handles a repeated `?tab=a&tab=b` (#3).
+
+```ts
+// lib/auth-query.ts
+export const parseAuthMode = (params: AuthSearchParams): AuthMode =>
+  firstParam(params.tab) === "create" ? "sign-up" : "sign-in";
+```
+
+The hook uses that value as the starting state.
+
+```ts
+// hooks/useAuthForm.ts
+export function useAuthForm(initialMode: AuthMode = "sign-in") {
+  const [mode, setMode] = useState<AuthMode>(initialMode);
+```
+
+**The URL sets the first tab only.** After that, clicking a tab calls `setMode` and the URL stays the same. That's a deliberate difference from the [URL as state](./typescript-react-nextjs-from-Talent-Pipeline-Tracker.md#39-the-url-as-state) pattern used by the home filters, where the URL is the single source of truth. Which tab is showing doesn't need to survive a refresh or be shared, so plain state is enough.
+
+**Why the component needs a `key`.** `useState` reads its starting value only the first time a component mounts. Going from `?tab=create` to `/auth/sign-in` through the navbar changes the prop, but React keeps the same component and its old state, so the Create account tab would stay open. A different `key` tells React it's a new component, so the state starts over.
+
+```tsx
+<AuthPanel key={initialMode} initialMode={initialMode} />
+```
+
+**Interview Q:** *Why does `{condition && <Field />}` keep the next input's value when it toggles?* React matches children by position. `false` holds that position, so the following element doesn't move and React keeps its DOM node and state.
+
+**Interview Q:** *How would you force an input to reset when something changes?* Give it a different `key`. A new key tells React it's a different element, so it creates a fresh one.
+
+**Interview Q:** *How do you type a component that wraps a native element?* Use `ComponentProps<"input">`, add your own props with `&`, and pass the rest through with a spread.
+
+**Interview Q:** *Does the order of `className` and `{...props}` matter?* Yes. Later props override earlier ones, so the spread's position decides whether the caller can replace a value.
+
+**Interview Q:** *Why isn't `aria-selected` just decoration?* It exposes the state to assistive technology. Without it, a screen reader user can't tell which tab is active from a color change.
+
+**Interview Q:** *How do you stop signed-in users from seeing a sign-in form?* Check the session on the server before rendering the form, and redirect if there is one. With `cacheComponents`, that check has to be inside `<Suspense>`.
+
+**Interview Q:** *Why doesn't `useState(prop)` update when the prop changes?* The argument is only used on the first render. Later renders ignore it. To restart the state when the prop changes, give the component a `key` based on that prop.
+
+**Interview Q:** *When should UI state live in the URL instead of `useState`?* Use the URL when it should survive a refresh, work with the back button, or be shareable, like search filters. Use `useState` for short-lived details like which tab of a form is open.
+
+**Interview Q:** *Why validate a value read from `searchParams`?* It comes from the URL, so it can be anything, and TypeScript types don't exist at runtime. Check it against the values you allow and fall back to a default.
+
+**Interview Q:** *How do you retire a page without breaking old links?* Keep the route and redirect it to the new location. Use a temporary redirect (307) if it may change, or a permanent one (308) when it won't.

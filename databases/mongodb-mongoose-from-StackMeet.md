@@ -19,8 +19,10 @@
   9. `.lean()`
   10. `userId?`: an optional field in the type and the schema
   11. `createBooking`: where the data actually gets saved
+  12. Building a query from optional filters: `$and`, `$or`, `$ne`, `$in`
+  13. From query to page data: lazy queries, `limit` and plain ids
 - [Project decisions](#project-decisions)
-  12. Protecting a free database: why one limit isn't enough
+  14. Protecting a free database: why one limit isn't enough
 
 ---
 
@@ -534,13 +536,142 @@ return { success: false, message: 'Unable to create booking right now. Please tr
 
 **Interview Q:** *Why is `e` typed as `unknown` in a `catch` block?* Anything can be thrown in JavaScript, not just an `Error`, so you have to check its shape before reading a property like `code`. That's what the `typeof` and `'code' in e` checks do. In strict TypeScript projects, `catch` variables default to `unknown`.
 
+### 12. Building a query from optional filters: `$and`, `$or`, `$ne`, `$in`
+
+The home search has optional boxes, so the query can't be written as one fixed object. The function starts with the condition that always applies, then adds one condition for each box the user filled in. It's the database version of the array filter in [Next.js notes #3](../frontend/nextjs-from-StackMeet.md#3-search-filter-logic-normalize-input-or-inside-a-filter-and-between-filters). Filtering in the database means `limit` applies after the filters.
+
+**The start.** Only upcoming events ever qualify. `$gte` works on these date strings because `YYYY-MM-DD` sorts in date order ([Next.js notes #4](../frontend/nextjs-from-StackMeet.md#4-upcoming-events-compare-date-strings-sort-with-localecompare)).
+
+```ts
+// lib/data/events.ts
+function buildUpcomingFilter({ q, where, mode }: UpcomingEventsOptions): FilterQuery<EventFields> {
+  const conditions: FilterQuery<EventFields>[] = [{ date: { $gte: today() } }];
+```
+
+**The search box.** `$or` means the title or a tag can match. When a field holds an array, like `tags`, MongoDB matches if any element matches. The `"i"` flag ignores case.
+
+```ts
+  const what = clean(q);
+  if (what) {
+    const pattern = new RegExp(escapeRegex(what), "i");
+    conditions.push({ $or: [{ title: pattern }, { tags: pattern }] });
+  }
+```
+
+**The place box and the mode.** The word `online` checks the format, and anything else checks the city.
+
+```ts
+  const place = clean(where);
+  if (place === "online") conditions.push({ mode: { $ne: "in-person" } });
+  else if (place) conditions.push({ location: new RegExp(escapeRegex(place), "i") });
+
+  if (mode) conditions.push({ mode });
+```
+
+**Combining them.** `$and` means every condition must pass.
+
+```ts
+  return { $and: conditions };
+}
+```
+
+For `{ q: "react", where: "online" }` the result is:
+
+```ts
+{ $and: [
+  { date: { $gte: "2026-11-08" } },
+  { $or: [{ title: /react/i }, { tags: /react/i }] },
+  { mode: { $ne: "in-person" } },
+] }
+```
+
+**Escaping user input in a regex.** Without this, characters a user types are treated as regex syntax. `react.js` would also match `reactXjs`, and `(` would throw an invalid regex error. `$&` in the replacement stands for the matched character, so each special character gets a backslash in front of it.
+
+```ts
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+```
+
+**`$in` and `$ne` together.** Similar events are the ones sharing at least one tag, excluding the event itself.
+
+```ts
+const similar = await Event.find({ _id: { $ne: event._id }, tags: { $in: event.tags } })
+  .select(PUBLIC_FIELDS)
+  .lean<EventDoc[]>();
+```
+
+| Operator | Meaning |
+|---|---|
+| `$gte` | Greater than or equal to |
+| `$ne` | Not equal. Also matches documents where the field is missing |
+| `$in` | Equals any value in the list. On an array field, any element can match |
+| `$or` | At least one condition passes |
+| `$and` | Every condition passes |
+
+**Limitations to know.** A case-insensitive regex that isn't anchored to the start can't use an index efficiently, so MongoDB checks many documents. That's fine for a small collection, but a large one needs a text or search index. Also limit how long the search input can be.
+
+**Interview Q:** *How do you build a MongoDB query from optional filters?* Start an array with the conditions that always apply, push one condition for each filter that has a value, and return `{ $and: conditions }`.
+
+**Interview Q:** *Why escape user input before `new RegExp()`?* Otherwise the user's text is treated as a pattern. It can match the wrong things, throw on invalid syntax, or run a slow pattern against the database.
+
+**Interview Q:** *What's the catch with `{ field: { $ne: value } }`?* It also matches documents that don't have the field. If that matters, add `$exists: true` or make the field required in the schema.
+
+### 13. From query to page data: lazy queries, `limit` and plain ids
+
+`Event.find()` doesn't run anything. It builds a query object, and each chained call adds to it.
+
+**Build the query.** `1` means ascending, so this sorts by date, then by time within a date. The `limit` is added only if the caller asked for one.
+
+```ts
+// lib/data/events.ts
+await connectDB();
+const query = Event.find(buildUpcomingFilter(options)).select(PUBLIC_FIELDS).sort({ date: 1, time: 1 });
+if (limit) query.limit(limit);
+```
+
+**Run it.** `await` is what sends the query to MongoDB. `.lean()` returns plain objects ([#9](#9-lean)), and `.map(toRecord)` converts each one.
+
+```ts
+return (await query.lean<EventDoc[]>()).map(toRecord);
+```
+
+**Limit in the database, not in JavaScript.** The first version loads every match into server memory and throws most away. The second makes MongoDB return only five.
+
+```ts
+(await Event.find(filter)).slice(0, 5);  // loads everything, keeps 5
+await Event.find(filter).limit(5);       // only 5 leave the database
+```
+
+**Convert ids to strings.** Even with `.lean()`, `_id` and `createdBy` are `ObjectId` instances. React can only pass plain data to Client Components, so a class instance like `ObjectId` is rejected. `...doc` copies every field, and the two lines after it replace the ids.
+
+```ts
+const toRecord = (doc: EventDoc): EventRecord => ({
+  ...doc,
+  _id: doc._id.toString(),
+  createdBy: doc.createdBy.toString(),
+});
+```
+
+**Planned fix: list allowed fields instead of excluded ones.** `"-createdAt -updatedAt -__v"` hides three fields and returns everything else, so a sensitive field added later would be sent to pages automatically. Listing the allowed fields means a new field stays hidden until someone chooses to expose it.
+
+```ts
+const PUBLIC_FIELDS = "title slug description overview image venue location date time mode audience agenda organizer tags createdBy";
+```
+
+**Interview Q:** *When does a Mongoose query actually run?* When it's awaited, or when `.then()` or `.exec()` is called. `find`, `select`, `sort` and `limit` only build it, which is why a condition can add `.limit()` before it runs.
+
+**Interview Q:** *Why use `.limit()` instead of `.slice()`?* `.limit()` stops the extra documents from leaving the database, which saves memory and network time. It also has to come with a `.sort()`, or which documents you get isn't guaranteed.
+
+**Interview Q:** *Why convert `ObjectId` to a string before passing it to a Client Component?* Props crossing from server to client must be serializable, and React rejects class instances like `ObjectId`. A string works everywhere.
+
+**Interview Q:** *Why is a field allowlist safer than an exclusion list?* With an exclusion list, any new field is exposed by default. With an allowlist, it's hidden by default.
+
 ---
 
 ## Project decisions
 
 These came from questions I asked while building StackMeet.
 
-### 12. Protecting a free database: why one limit isn't enough
+### 14. Protecting a free database: why one limit isn't enough
 
 My first idea was to limit events per user, so a public site couldn't push my free MongoDB plan over its storage limit. That alone doesn't work, because sign-up has no email verification and one person can create many accounts. The real protection is a set of limits that covers each way data can grow.
 

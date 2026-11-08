@@ -14,6 +14,9 @@
   4. Constants in a `'use server'` file
   5. Reading a request body: `await req.json()` and `as`
   6. A full route, step by step: sign-up
+  7. `import "server-only"` and the data access layer
+  8. Loading page data: failure handling per call, `notFound()` and why reads aren't Server Actions
+  9. Three ways to reach the database: Route Handlers, Server Actions and data functions
 
 ---
 
@@ -356,3 +359,169 @@ return NextResponse.json(
 **Interview Q:** *Why don't you return the created user directly from `User.create`?* It includes the password hash and internal fields. Listing the fields you want means a new sensitive field on the model can't leak by accident.
 
 **Interview Q:** *Why hard-code `role: 'user'` instead of reading it from the body?* Clients control the request body, so accepting a role would let anyone make themselves an admin. This is called a mass assignment vulnerability.
+
+### 7. `import "server-only"` and the data access layer
+
+A data access layer (DAL) puts the database reads in one place, so pages call a function instead of writing queries. `import "server-only"` turns "this code stays on the server" into a rule the build enforces.
+
+**The marker.** It goes at the top of the file. If a Client Component imports this file, directly or through another file, the build fails with a clear error.
+
+```ts
+// lib/data/events.ts
+import "server-only";
+
+import connectDB from "@/lib/mongodb";
+import { Event, type EventFields } from "@/database";
+
+export async function getEventBySlug(slug: string): Promise<EventRecord | null> {
+  // ...queries MongoDB
+}
+```
+
+**Why it's needed when Server Components already run on the server.** Server Components are the default, but a plain `.ts` file has no side of its own. It's bundled into whichever side imports it. Without the marker, nothing states that this file must never reach a Client Component. A mistake might only show up as a confusing Mongoose or `node:fs` bundling error, or not at all if the file only uses code that also runs in a browser.
+
+**The correct way to use it.** A Server Component calls the function and passes the result down as props.
+
+```tsx
+// A Server Component (no "use client")
+const event = await getEventBySlug(slug);
+if (!event) notFound();
+return <EventContent event={event} />;
+```
+
+**Three similar-looking markers do different jobs.**
+
+| Marker | What it does |
+|---|---|
+| `import "server-only"` | Build error if client code imports this module |
+| `"use server"` | Turns exported async functions into Server Actions, which are public endpoints the browser can call (see section 2) |
+| `"use client"` | Marks where client code starts: this module and what it imports go in the browser bundle |
+
+`"use server"` would be the wrong choice here. It would make each database read a public endpoint, while `server-only` keeps these functions internal.
+
+**What it doesn't do.** It's a build-time check on imports. It isn't authentication or authorization, so permission checks are still needed.
+
+**Interview Q:** *What does `import "server-only"` do?* It makes the build fail if the module ends up in client code. It's used on files that touch the database, secrets or the file system.
+
+**Interview Q:** *`server-only` vs `"use server"`?* `server-only` keeps a module away from the client and exposes nothing. `"use server"` does the opposite kind of job: it exposes functions so the client can call them over the network.
+
+**Interview Q:** *Why not fetch your own API route from a Server Component?* The Server Component is already on the server, so calling a Route Handler adds a pointless network round trip and needs an absolute URL. Calling the data function directly is faster and fully typed.
+
+**Interview Q:** *Can a Client Component get data from a `server-only` module?* Not by importing it. A Server Component can load the data and pass it as props, or the client can call a Route Handler.
+
+### 8. Loading page data: failure handling per call, `notFound()` and why reads aren't Server Actions
+
+The event page loads two things, and they don't matter equally. Without the event there's no page. Without similar events, the page is still useful. So each call handles its own failure.
+
+**The required data.** `.catch()` turns a failed read into `null`, and the error is logged on the server. `await fn().catch(...)` does the job of a `try/catch` around one call, and `const` can hold the result directly.
+
+```tsx
+// app/events/[slug]/page.tsx
+const event = await getEventBySlug(slug).catch((error) => {
+  console.error("Loading the event failed:", error);
+  return null;
+});
+```
+
+**Stop if there's nothing to show.** `notFound()` renders the 404 page. After this check, TypeScript knows `event` isn't `null`, so `event.description` is safe below it.
+
+```tsx
+if (!event || !event.description || !event.image) return notFound();
+```
+
+`notFound()` works by throwing a special error that Next.js catches, and `redirect()` works the same way. If you call either one inside a `try` block, a general `catch` can swallow it and the 404 never happens. Here the `.catch()` wraps only the database call, so `notFound()` stays outside it.
+
+**The optional data.** A failure gives an empty list, so the rest of the page still renders. The `: EventRecord[]` on the callback states the type of the fallback, because a bare `[]` says nothing about what it would hold.
+
+```tsx
+const similarEvents = await getSimilarEvents(slug).catch((error): EventRecord[] => {
+  console.error("Loading similar events failed:", error);
+  return [];
+});
+```
+
+**Why a read shouldn't be a Server Action.** This used to be a `'use server'` function called from the page while rendering.
+
+```ts
+// Before: lib/actions/event.actions.ts
+'use server';
+export const getSimilarEventsBySlug = async ({ slug }: { slug: string }) => { /* query */ };
+```
+
+A Server Action is a public endpoint, and it's designed for changing data. Frameworks may run actions one at a time, and their results can't be cached like a normal read. A page rendering on the server doesn't need a network-callable function at all. It can call a `server-only` data function directly (see section 7), which is also one less endpoint to protect.
+
+| Need | Use |
+|---|---|
+| Read data while rendering on the server | A data function in the data access layer |
+| Change data from a form or button | A Server Action, with validation and permission checks |
+| Serve other clients, or fetch from the browser | A Route Handler |
+
+**Interview Q:** *Should a page treat every data failure the same way?* No. Decide per call. If the page can't exist without the data, show a not-found or error state. If the data is optional, use a fallback and log the error so one failed section doesn't take down the page.
+
+**Interview Q:** *Why shouldn't you call `notFound()` or `redirect()` inside a `try/catch`?* They work by throwing. A general `catch` can intercept that error, so the navigation never happens. Call them outside the `try`, or rethrow.
+
+**Interview Q:** *What's the type of `error` in `.catch()` compared to a `catch` block?* In `.catch()` it's `any`. In a `catch` block under strict TypeScript it's `unknown`, which forces you to check it first.
+
+**Interview Q:** *Why not load both with `Promise.all`?* It would be faster for a valid event, because the queries run at the same time. Running them in order avoids a wasted similar-events query when the event doesn't exist. Use `Promise.all` when the calls don't depend on each other and the extra work is acceptable.
+
+**Interview Q:** *When would you use a Server Action, and when a data function?* Use a Server Action for changes triggered by the user. Use a data function for reading data during server rendering.
+
+### 9. Three ways to reach the database: Route Handlers, Server Actions and data functions
+
+StackMeet uses all three, and I kept events on API routes and bookings on a Server Action on purpose, to compare them on real features.
+
+**Route Handler: the browser sends a real HTTP request.** The create form runs in the browser, so it calls a URL and has to check the response itself. `res.json()` has no type information, so TypeScript can't check what comes back.
+
+```ts
+// components/createEvent/CreateEventForm.tsx (client component)
+const res = await fetch('/api/events', { method: 'POST', body: payload });
+
+const data = await res.json();
+if (!res.ok) {
+  toast.error(data.message || 'Failed to create event.', { id: toastId });
+  return;
+}
+```
+
+**Server Action: the browser calls a function.** The same kind of job, but there's no URL or `fetch` to write. Next.js creates the network call, and the argument and result types carry through (see section 2).
+
+```ts
+// components/events/BookEvent.tsx (client component)
+const result = await createBooking({ eventId, slug, email: normalizedEmail });
+```
+
+**Data function: the server calls a function.** The page is already on the server, so no network is involved (see section 7).
+
+```tsx
+// components/home/NextUp.tsx (Server Component)
+const events = await getUpcomingEvents({ q, where, mode, limit: NEXT_UP_LIMIT });
+```
+
+| | Route Handler | Server Action | Data function |
+|---|---|---|---|
+| Has a URL you choose | Yes | No, Next.js generates the endpoint | No |
+| Who can call it | Anything that can send HTTP | Your own React code, but the endpoint is public | Server code only |
+| Types carry through the call | No | Yes | Yes |
+| Reachable from the internet | Yes | Yes | No |
+| Needs validation and permission checks | Yes | Yes | Permission checks if the data is private |
+| Best for | Outside callers, webhooks, file downloads, sign-in handling | Changes from your own forms and buttons | Reading data while rendering |
+
+**The mistake I removed: a server fetching itself.** The home page used to call its own API route, then filter the results in JavaScript.
+
+```ts
+// Before: app/page.tsx (a Server Component)
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
+const allEvents = (await (await fetch(`${BASE_URL}/api/events`)).json()).events ?? [];
+```
+
+The request left the server only to come back to the same server. It cost an extra network round trip, needed the site's address to be configured correctly, lost its types, and downloaded every event just to show nine. Switching to data functions removed the need for `NEXT_PUBLIC_BASE_URL` completely. That variable also had to be set before building, because `NEXT_PUBLIC_` values are fixed at build time ([Talent Pipeline notes #46](../frontend/typescript-react-nextjs-from-Talent-Pipeline-Tracker.md#46-environment-variables-next_public_)).
+
+**Why the browser can use `/api/events` but the server can't.** The browser resolves a relative path against the page it's on. A Server Component isn't on a page in that sense, so `fetch` on the server needs a full URL.
+
+**Interview Q:** *Server Action vs API route?* A Server Action suits changes from your own React forms and buttons: no URL to manage, and the types carry through. An API route suits anything that needs a real URL, such as a mobile app, a webhook or another service. Both are public endpoints, so both need validation and permission checks.
+
+**Interview Q:** *Do Server Actions replace API routes?* No. A Server Action is tied to your React app, while an API route is a general HTTP endpoint that any client can call.
+
+**Interview Q:** *Why not fetch your own API from a Server Component?* It adds a network round trip to the same server, needs an absolute URL and loses type safety. Put the query in a shared function, then have both the page and the route call it.
+
+**Interview Q:** *Why does `fetch('/api/events')` work in the browser but not in a Server Component?* The browser can resolve a relative path against the current page's address. On the server there's no current page to resolve it against, so it needs an absolute URL.
