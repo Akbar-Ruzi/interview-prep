@@ -12,9 +12,11 @@
   2. A generic filter function: `<T extends Shape>(items: T[]): T[]`
   3. Search filter logic: normalize input, OR inside a filter, AND between filters
   4. Upcoming events: compare date strings, sort with `localeCompare`
+- [Filters in the URL](#filters-in-the-url)
+  5. Filter pills as links: `URLSearchParams`, `?mode=` and `aria-current`
 - [Next.js rendering and config](#nextjs-rendering-and-config)
-  5. `cacheComponents`: "Uncached data was accessed outside of `<Suspense>`"
-  6. Using `rewrites` as a reverse proxy for analytics
+  6. `cacheComponents`: "Uncached data was accessed outside of `<Suspense>`"
+  7. Using `rewrites` as a reverse proxy for analytics
 
 ---
 
@@ -216,9 +218,105 @@ Joining date **and** time matters: two events on the same day are then ordered b
 
 ---
 
+## Filters in the URL
+
+### 5. Filter pills as links: `URLSearchParams`, `?mode=` and `aria-current`
+
+`ModeFilter` shows four pills: **All**, **Online**, **In person**, **Hybrid**. The key idea: **the component doesn't filter anything.** Each pill is a `<Link>` to a URL with `?mode=` set. The page reads `searchParams` and runs `filterEvents` (#3). Because the choice lives in the URL, it survives a refresh, works with the back button, can be shared, and needs no `useState`, so the component can stay a Server Component. (The general idea is in [Talent Pipeline notes #39](./typescript-react-nextjs-from-Talent-Pipeline-Tracker.md#39-the-url-as-state).)
+
+```
+click "Online" → /?q=React&mode=online#events → page reads searchParams → filterEvents → online events shown
+```
+
+**The options list.** Each option has a required `label` and an optional `value`. **All** has no `value` on purpose: "All" means "no mode filter", not a fourth mode.
+
+```tsx
+const OPTIONS: { value?: EventMode; label: string }[] = [
+  { label: "All" },                                         // no value = no ?mode=
+  { value: "online", label: FORMAT_LABELS.online },
+  { value: "in-person", label: FORMAT_LABELS["in-person"] }, // brackets: "in-person" has a hyphen
+  { value: "hybrid", label: FORMAT_LABELS.hybrid },
+];
+```
+
+`FORMAT_LABELS.in-person` would be read as `FORMAT_LABELS.in - person` (a subtraction), so a key with a hyphen needs bracket notation. Taking the labels from `FORMAT_LABELS` keeps the pill text the same as the badge on each event card.
+
+**The props.** The component needs the current search (`q`, `where`) plus the current `mode`. `&` is an intersection type: it combines both types into one ([Talent Pipeline notes #9](./typescript-react-nextjs-from-Talent-Pipeline-Tracker.md#9-intersection-types-)).
+
+```tsx
+type ModeFilterProps = EventSearch & { mode?: EventMode };
+// same as { q?: string; where?: string; mode?: "online" | "in-person" | "hybrid" }
+
+const ModeFilter = ({ q, where, mode }: ModeFilterProps) => ( /* ... */ );
+```
+
+**Building each link with `URLSearchParams`.** For every option, start from an empty set of params and add only what has a value. This **keeps the other filters**: clicking a pill changes `mode` but keeps the user's `q` and `where`.
+
+```tsx
+const params = new URLSearchParams();
+if (q) params.set("q", q);
+if (where) params.set("where", where);
+if (value) params.set("mode", value);   // "All" has no value, so ?mode= is dropped
+const query = params.toString();        // "q=React&where=New+York&mode=online"
+```
+
+`URLSearchParams` also encodes values for you: the space in `New York` becomes `+`, and `&` or `#` inside a value can't break the URL. That's safer than building `"?q=" + q` by hand ([Talent Pipeline notes #17](./typescript-react-nextjs-from-Talent-Pipeline-Tracker.md#17-urlsearchparams-and-encodeuricomponent)).
+
+**Which pill is selected.** Compare the option's value with the current mode:
+
+```tsx
+const selected = value === mode;
+```
+
+With no `?mode=` in the URL, `mode` is `undefined`, and **All**'s `value` is also `undefined`. `undefined === undefined` is `true`, so **All** is selected by default without any special case.
+
+**The link itself.** A ternary inside the template literal adds `?` only when there are params, so the "All with no search" link is a clean `/#events` rather than `/?#events`.
+
+```tsx
+<Link
+  key={label}                                       // stable, unique key for .map()
+  href={`/${query ? `?${query}` : ""}#events`}      // "/?mode=online#events" or "/#events"
+  scroll={false}                                    // don't jump to the top of the page
+  aria-current={selected ? "true" : undefined}      // screen readers hear "current"
+  className={`... rounded-full border px-4 ${
+    selected ? "border-accent bg-accent text-on-accent" : "border-border text-text"
+  }`}
+>
+  {label}
+</Link>
+```
+
+| Piece | Why |
+|---|---|
+| `#events` | The fragment points at `<section id="events">`, so the user stays at the results list |
+| `scroll={false}` | Stops Next.js from scrolling to the top after the navigation |
+| `aria-current="true"` | Tells assistive tech which pill is active. `undefined` leaves the attribute out entirely. `"page"` is meant for links to the current page, so `"true"` fits a filter better |
+| `key={label}` | React needs a stable key for items made by `.map()`; the labels are unique |
+| conditional `className` | Shared classes for every pill, plus one of two color sets depending on `selected` |
+| `<nav aria-label="...">` | Groups the pills as a named navigation region |
+
+**Planned fix: validate `?mode=` on the page.** `EventMode` is only a TypeScript type, and types disappear at runtime. A user can type `?mode=banana` into the URL. The page should check the value before trusting it:
+
+```ts
+const MODES = ["online", "in-person", "hybrid"] as const;
+const isEventMode = (value?: string): value is EventMode =>
+  MODES.includes(value as EventMode);
+
+const raw = firstParam(searchParams.mode);       // from #3
+const mode = isEventMode(raw) ? raw : undefined; // anything unknown means "All"
+```
+
+**Interview Q:** *Why make filters links instead of buttons with `useState`?* The URL becomes the single source of truth. Filters survive a refresh, the back button works, and the link can be shared. The server can read `searchParams` and filter before rendering, and the component needs no client JavaScript.
+
+**Interview Q:** *Why build the query with `URLSearchParams` instead of string concatenation?* It encodes special characters (spaces, `&`, `#`, `=`) correctly, and it's easy to add only the params that have values, so the other filters are kept.
+
+**Interview Q:** *TypeScript says `mode` is `EventMode`. Why validate it?* Types are checked at compile time only. URL input arrives at runtime and can be any string, so it must be checked (for example with a type guard) before use.
+
+---
+
 ## Next.js rendering and config
 
-### 5. `cacheComponents`: "Uncached data was accessed outside of `<Suspense>`"
+### 6. `cacheComponents`: "Uncached data was accessed outside of `<Suspense>`"
 
 This was a real production build failure, and it only appeared in `next build`.
 
@@ -261,7 +359,7 @@ const EventDetailsPage = ({ params }: EventPageProps) => (
 
 **Interview Q:** *What is Partial Prerendering?* The page's static parts are prerendered and sent immediately, then dynamic parts stream in through `<Suspense>` boundaries. Users see content fast, even when some data is slow.
 
-### 6. Using `rewrites` as a reverse proxy for analytics
+### 7. Using `rewrites` as a reverse proxy for analytics
 
 Requests go to my own domain and Next.js forwards them. Ad blockers often block known analytics domains, so a same-origin path makes the tracking more reliable.
 
