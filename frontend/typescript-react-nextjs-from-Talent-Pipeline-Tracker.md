@@ -110,7 +110,9 @@ export type CandidateStatus =
   | "discarded";
 ```
 
-**Interview Q:** *Union literal type vs `enum`?* A union has no runtime code and is just strings. An `enum` generates a JavaScript object. Many teams prefer unions plus a `const` object for labels (see `STATUS_LABELS`).
+**Interview Q:** *Union literal type vs `enum`?*
+
+A union has no runtime code and is just strings. An `enum` generates a JavaScript object. Many teams prefer unions plus a `const` object for labels (see `STATUS_LABELS`).
 
 ### 2. Utility types: `Pick`, `Omit`, `Partial`, `Record`
 
@@ -150,7 +152,9 @@ export const STATUS_LABELS: Record<CandidateStatus, string> = {
 };
 ```
 
-**Interview Q:** *Why derive `UpdateCandidatePayload` from `Candidate` instead of writing it out?* If `Candidate` changes, the payload updates automatically, so the two types can't drift apart.
+**Interview Q:** *Why derive `UpdateCandidatePayload` from `Candidate` instead of writing it out?*
+
+If `Candidate` changes, the payload updates automatically, so the two types can't drift apart.
 
 ### 3. `unknown` vs `any`
 
@@ -171,7 +175,9 @@ if (!isCandidate(data)) {
 return data; // now typed as Candidate
 ```
 
-**Interview Q:** *When would you use `unknown`?* When you don't control the data's shape: network responses, `catch (err)` values, and parsed JSON.
+**Interview Q:** *When would you use `unknown`?*
+
+When you don't control the data's shape: network responses, `catch (err)` values, and parsed JSON.
 
 ### 4. Type narrowing
 
@@ -204,7 +210,9 @@ const entries =
     : Object.entries(searchParams);
 ```
 
-**Interview Q:** *Why can't you write `err.message` directly in a `catch`?* `err` is `unknown`. Anything can be thrown, including a string, so you narrow it first.
+**Interview Q:** *Why can't you write `err.message` directly in a `catch`?*
+
+`err` is `unknown`. Anything can be thrown, including a string, so you narrow it first.
 
 ### 5. Type guards (`value is T`)
 
@@ -240,7 +248,9 @@ export function isCandidate(item: unknown): item is Candidate {
 }
 ```
 
-**Interview Q:** *What's the risk of a type guard?* TypeScript trusts it completely. If the checks are incomplete, it can claim something is a `Candidate` when it isn't, so it has to check every field you rely on.
+**Interview Q:** *What's the risk of a type guard?*
+
+TypeScript trusts it completely. If the checks are incomplete, it can claim something is a `Candidate` when it isn't, so it has to check every field you rely on.
 
 ### 6. Runtime validation
 
@@ -257,7 +267,9 @@ if (!isCandidateListResponse(data)) {
 return data;
 ```
 
-**Interview Q:** *Doesn't TypeScript already guarantee the response type?* No. `fetch().json()` returns `any`. TypeScript only checks your code, not the data. Libraries like **Zod** do the same job declaratively (`schema.parse(data)`).
+**Interview Q:** *Doesn't TypeScript already guarantee the response type?*
+
+No. `fetch().json()` returns `any`. TypeScript only checks your code, not the data. Libraries like **Zod** do the same job declaratively (`schema.parse(data)`).
 
 ### 7. Generics
 
@@ -284,7 +296,9 @@ useState<string | null>(null);
 useRef<HTMLDivElement>(null);
 ```
 
-**Interview Q:** *Why call `apiFetch<unknown>` rather than `apiFetch<Candidate>`?* `apiFetch<Candidate>` would be a lie: nothing has checked the data yet. `unknown` forces the type guard to run first.
+**Interview Q:** *Why call `apiFetch<unknown>` rather than `apiFetch<Candidate>`?*
+
+`apiFetch<Candidate>` would be a lie: nothing has checked the data yet. `unknown` forces the type guard to run first.
 
 ### 8. Type assertions (`as`)
 
@@ -306,7 +320,9 @@ This one is unchecked, which is why callers pass `<unknown>`:
 return JSON.parse(text) as T;
 ```
 
-**Interview Q:** *Type guard vs assertion?* A guard proves the type with a runtime check. An assertion only claims it.
+**Interview Q:** *Type guard vs assertion?*
+
+A guard proves the type with a runtime check. An assertion only claims it.
 
 ### 9. Intersection types (`&`)
 
@@ -325,7 +341,9 @@ type CandidateTableOptions = ListFilters & {
 };
 ```
 
-**Interview Q:** *`type` with `&` vs `interface` with `extends`?* They're mostly interchangeable for objects. `interface` can be reopened (declaration merging). `type` can also express unions, tuples, and mapped types.
+**Interview Q:** *`type` with `&` vs `interface` with `extends`?*
+
+They're mostly interchangeable for objects. `interface` can be reopened (declaration merging). `type` can also express unions, tuples, and mapped types.
 
 ### 10. Optional chaining and nullish coalescing
 
@@ -343,7 +361,9 @@ const page = pageParam ?? 1;
 const filterKey = `${status ?? ""}|${stage ?? ""}|${search ?? ""}`;
 ```
 
-**Interview Q:** *`??` vs `||`?* `0 || 5` is `5`, but `0 ?? 5` is `0`. Use `??` when `0`, `""`, or `false` are valid values.
+**Interview Q:** *`??` vs `||`?*
+
+`0 || 5` is `5`, but `0 ?? 5` is `0`. Use `??` when `0`, `""`, or `false` are valid values.
 
 ### 11. Type-only imports
 
@@ -386,7 +406,9 @@ It also renders something only when a value exists:
 {onRetry && <button onClick={onRetry}>Retry</button>}
 ```
 
-**Interview Q:** *What's the pitfall of `{count && <List />}` in JSX?* When `count` is `0`, React renders the number `0`. Use `count > 0 &&` or a ternary instead.
+**Interview Q:** *What's the pitfall of `{count && <List />}` in JSX?*
+
+When `count` is `0`, React renders the number `0`. Use `count > 0 &&` or a ternary instead.
 
 ### 13. `async`/`await` with `try`/`catch`/`finally`
 
@@ -426,7 +448,9 @@ if (!response.ok) {
 }
 ```
 
-**Interview Q:** *Does `fetch` throw on a 500?* No. That's the most common fetch interview trap.
+**Interview Q:** *Does `fetch` throw on a 500?*
+
+No. That's the most common fetch interview trap.
 
 ### 15. Closures
 
@@ -440,7 +464,9 @@ const listId = listIdRef.current;
 const isOutdated = () => listId !== listIdRef.current;
 ```
 
-**Interview Q:** *What is a stale closure in React?* A callback that captured an old render's state. Fixes include functional updates, refs, and `useEffectEvent` (see #26).
+**Interview Q:** *What is a stale closure in React?*
+
+A callback that captured an old render's state. Fixes include functional updates, refs, and `useEffectEvent` (see #26).
 
 ### 16. Destructuring, spread, and rest
 
@@ -571,13 +597,21 @@ const table = useCandidateTable({ ...filters, page, onPageOutOfRange: setPage })
 const { loadMoreAreaRef, ...feed } = useCandidateFeed(filters);
 ```
 
-**Interview Q:** *Custom hook vs utility function?* Use a hook only when the logic needs hooks: state, effects, or context. Pure logic goes in a normal function (see `lib/utils/candidate-urls.ts`).
+**Interview Q:** *Custom hook vs utility function?*
 
-**Interview Q:** *If two components call the same custom hook, do they share state?* No. Each call has its own `useState`/`useEffect`, so the drawer and full page each hold their own notes. To share state, put it in context (see #56) and read it through a hook.
+Use a hook only when the logic needs hooks: state, effects, or context. Pure logic goes in a normal function (see `lib/utils/candidate-urls.ts`).
 
-**Interview Q:** *Why must a custom hook start with `use`?* So React and the linter know it calls hooks and can enforce the Rules of Hooks inside it.
+**Interview Q:** *If two components call the same custom hook, do they share state?*
 
-**Interview Q:** *Your Notes tab refetches every time the user switches tabs. Why, and how do you fix it?* The fetching hook lives in the tab component, which unmounts on every switch, losing its state. Call the hook in a parent that stays mounted and pass the data down as props (lifting state up, see #60).
+No. Each call has its own `useState`/`useEffect`, so the drawer and full page each hold their own notes. To share state, put it in context (see #56) and read it through a hook.
+
+**Interview Q:** *Why must a custom hook start with `use`?*
+
+So React and the linter know it calls hooks and can enforce the Rules of Hooks inside it.
+
+**Interview Q:** *Your Notes tab refetches every time the user switches tabs. Why, and how do you fix it?*
+
+The fetching hook lives in the tab component, which unmounts on every switch, losing its state. Call the hook in a parent that stays mounted and pass the data down as props (lifting state up, see #60).
 
 **Rules of Hooks:** only call hooks at the top level (not in conditions or loops), and only from components or other hooks.
 
@@ -590,7 +624,9 @@ setReloadKey((k) => k + 1);                               // retry trigger
 setCandidates((prev) => [...prev, ...response.data]);     // append a page
 ```
 
-**Interview Q:** *Why `setCount(c => c + 1)` instead of `setCount(count + 1)`?* `count` can be stale inside async code or batched updates. The function form always gets the current value.
+**Interview Q:** *Why `setCount(c => c + 1)` instead of `setCount(count + 1)`?*
+
+`count` can be stale inside async code or batched updates. The function form always gets the current value.
 
 ### 20. `useEffect`, cleanup, and dependency arrays
 
@@ -639,7 +675,9 @@ useEffect(() => {
 
 `useCandidateFeed` takes this further with `listIdRef`. "Load more" isn't an effect, so it compares a list id instead.
 
-**Interview Q:** *How do you prevent out-of-order responses?* Use an ignore flag in the cleanup, an `AbortController`, or a data library (TanStack Query, SWR) that handles it for you.
+**Interview Q:** *How do you prevent out-of-order responses?*
+
+Use an ignore flag in the cleanup, an `AbortController`, or a data library (TanStack Query, SWR) that handles it for you.
 
 ### 22. `useRef` vs `useState`
 
@@ -659,7 +697,9 @@ const loadMoreAreaRef = useRef<HTMLDivElement>(null);
 <div ref={loadMoreAreaRef}>...</div>
 ```
 
-**Interview Q:** *Why would a state flag fail as a "busy" lock?* State only changes on the next render, so two calls in the same tick both see `false`.
+**Interview Q:** *Why would a state flag fail as a "busy" lock?*
+
+State only changes on the next render, so two calls in the same tick both see `false`.
 
 ### 23. Adjusting state during render (instead of an effect)
 
@@ -707,7 +747,9 @@ const close = useCallback(() => {
 // the listener would be removed and re-added on every render.
 ```
 
-**Interview Q:** *Should you wrap every function in `useCallback`?* No. It has a cost. Use it when the reference itself matters. The React Compiler can automate this.
+**Interview Q:** *Should you wrap every function in `useCallback`?*
+
+No. It has a cost. Use it when the reference itself matters. The React Compiler can automate this.
 
 ### 26. `useEffectEvent`
 
@@ -729,7 +771,9 @@ useEffect(() => {
 }, [loading, error, candidates.length]);   // onLoadMoreAreaVisible not listed
 ```
 
-**Interview Q:** *How did people solve this before `useEffectEvent`?* By storing the latest callback in a ref (`callbackRef.current = fn`), or by adding it to the dependencies and accepting the extra re-runs.
+**Interview Q:** *How did people solve this before `useEffectEvent`?*
+
+By storing the latest callback in a ref (`callbackRef.current = fn`), or by adding it to the dependencies and accepting the extra re-runs.
 
 ### 27. Debouncing
 
@@ -746,7 +790,9 @@ useEffect(() => {
 }, [search]);
 ```
 
-**Interview Q:** *Debounce vs throttle?* Debounce runs once, after the activity stops. Throttle runs at most once per interval while the activity continues.
+**Interview Q:** *Debounce vs throttle?*
+
+Debounce runs once, after the activity stops. Throttle runs at most once per interval while the activity continues.
 
 ### 28. Conditional rendering
 
@@ -782,7 +828,9 @@ if (!candidateId) return null;
 ))}
 ```
 
-**Interview Q:** *What goes wrong with index keys?* After an insert or delete, React reuses the wrong element's state and DOM. Input values end up in the wrong rows.
+**Interview Q:** *What goes wrong with index keys?*
+
+After an insert or delete, React reuses the wrong element's state and DOM. Input values end up in the wrong rows.
 
 ### 30. Reusable components and default props
 
@@ -825,7 +873,9 @@ In development, React mounts, unmounts, and mounts again, to expose missing clea
 // run's cleanup cancels the frame. Clearing late lets the second run scroll.
 ```
 
-**Interview Q:** *Why does my effect run twice?* Strict Mode, in development only. The fix is a correct cleanup, not removing Strict Mode.
+**Interview Q:** *Why does my effect run twice?*
+
+Strict Mode, in development only. The fix is a correct cleanup, not removing Strict Mode.
 
 ### 33. IntersectionObserver (infinite scroll)
 
@@ -893,7 +943,9 @@ export default function Home() { /* ... */ }
 "use client";   // uses state, effects, useSearchParams
 ```
 
-**Interview Q:** *Where does `"use client"` go?* As high as necessary but as low as possible. Everything a client file imports becomes client code.
+**Interview Q:** *Where does `"use client"` go?*
+
+As high as necessary but as low as possible. Everything a client file imports becomes client code.
 
 ### 37. `useSearchParams`, `useRouter`, `usePathname`
 
@@ -1075,9 +1127,13 @@ Promise.all([props.params, props.searchParams]).then(([{ id }, searchParams]) =>
 
 Step 6 will use `Promise.all` to load a record and its notes at the same time.
 
-**Interview Q:** *Why `Promise.all` instead of two `await`s in a row?* Two `await`s run one after the other, so the total time is A + B. `Promise.all` runs them in parallel, so the total time is roughly the longer of the two. Use sequential `await`s only when B needs A's result.
+**Interview Q:** *Why `Promise.all` instead of two `await`s in a row?*
 
-**Interview Q:** *`Promise.all` vs `Promise.allSettled`?* `all` fails as soon as one Promise fails. `allSettled` waits for every one and reports each result. Use it when partial success is fine, for example showing the record even if the notes failed to load.
+Two `await`s run one after the other, so the total time is A + B. `Promise.all` runs them in parallel, so the total time is roughly the longer of the two. Use sequential `await`s only when B needs A's result.
+
+**Interview Q:** *`Promise.all` vs `Promise.allSettled`?*
+
+`all` fails as soon as one Promise fails. `allSettled` waits for every one and reports each result. Use it when partial success is fine, for example showing the record even if the notes failed to load.
 
 ### 48. An `async` function always returns a Promise
 
@@ -1095,9 +1151,13 @@ async function getRecord(id: string): Promise<Candidate> {
 
 `await` pauses only the function it's in, not the whole page. Other code and rendering keep running.
 
-**Interview Q:** *What does `async function f() { return 1 }` return?* `Promise<number>`, not `1`.
+**Interview Q:** *What does `async function f() { return 1 }` return?*
 
-**Interview Q:** *What happens if you forget `await`?* You get the Promise itself, not the value. `data.full_name` is then `undefined`, and the `isCandidate` check would fail, because a Promise isn't a candidate. Errors also escape your `try`/`catch`, since nothing waits for the Promise to reject.
+`Promise<number>`, not `1`.
+
+**Interview Q:** *What happens if you forget `await`?*
+
+You get the Promise itself, not the value. `data.full_name` is then `undefined`, and the `isCandidate` check would fail, because a Promise isn't a candidate. Errors also escape your `try`/`catch`, since nothing waits for the Promise to reject.
 
 ### 49. Generic syntax: `<T>`, not `(T)`
 
@@ -1113,7 +1173,9 @@ useState<string | null>(null)
 
 A real mistake from this project: `getRecord(id: string): Promise(Candiate)` gave `error TS1144: '{' or ';' expected` and `TS1005: '=>' expected`. TypeScript read `Promise(` as a function call, so the error message didn't mention generics at all. A misspelled type (`Candiate`) also fails, with "Cannot find name".
 
-**Interview Q:** *Read this type: `Promise<Record<string, Candidate[]>>`.* A Promise that fulfills with an object whose keys are strings and whose values are arrays of candidates. Read it from the outside in.
+**Interview Q:** *Read this type: `Promise<Record<string, Candidate[]>>`.*
+
+A Promise that fulfills with an object whose keys are strings and whose values are arrays of candidates. Read it from the outside in.
 
 ### 50. HTTP methods: GET, POST, PUT, PATCH, DELETE
 
@@ -1147,11 +1209,17 @@ type UpdateCandidateStatusPayload = Partial<Pick<Candidate, "status" | "stage">>
 type UpdateCandidatePayload = Omit<Candidate, "id" | "status" | /* ... */>;      // PUT
 ```
 
-**Interview Q:** *PUT vs PATCH?* PUT sends the complete replacement, and any field you leave out may be cleared. PATCH sends only what changes. This project uses PATCH for the status/stage dropdowns and PUT for the full Edit form.
+**Interview Q:** *PUT vs PATCH?*
 
-**Interview Q:** *Why does idempotency matter?* Requests can be retried safely after a timeout only if they're idempotent. A retried POST can create duplicates, which is one reason forms disable the Save button while saving.
+PUT sends the complete replacement, and any field you leave out may be cleared. PATCH sends only what changes. This project uses PATCH for the status/stage dropdowns and PUT for the full Edit form.
 
-**Interview Q:** *Why `JSON.stringify(payload)`?* `fetch` sends the body as text. The object must be serialized, and the `Content-Type: application/json` header tells the server how to read it. `apiFetch` adds that header automatically when there's a body.
+**Interview Q:** *Why does idempotency matter?*
+
+Requests can be retried safely after a timeout only if they're idempotent. A retried POST can create duplicates, which is one reason forms disable the Save button while saving.
+
+**Interview Q:** *Why `JSON.stringify(payload)`?*
+
+`fetch` sends the body as text. The object must be serialized, and the `Content-Type: application/json` header tells the server how to read it. `apiFetch` adds that header automatically when there's a body.
 
 ### 51. A typed API layer (one function per endpoint)
 
@@ -1178,7 +1246,9 @@ Benefits:
 - **Testable:** you can mock `getRecord` without touching the network.
 - **Consistent errors:** network failures, HTTP errors, invalid JSON and wrong shapes all become an `Error` with a readable message, which `ErrorState` displays.
 
-**Interview Q:** *Why not call `fetch` inside components?* It duplicates URL building, headers and error handling. It mixes data access with UI, and it leaves response types unchecked. Libraries like TanStack Query sit on top of a layer like this, adding caching, retries and request deduplication.
+**Interview Q:** *Why not call `fetch` inside components?*
+
+It duplicates URL building, headers and error handling. It mixes data access with UI, and it leaves response types unchecked. Libraries like TanStack Query sit on top of a layer like this, adding caching, retries and request deduplication.
 
 ---
 
@@ -1241,9 +1311,13 @@ useEffect(() => {
 
 The cleanup line, `return () => clearTimeout(timer)`, is the same in both effects. In the debounce it **is** the logic: every keystroke re-runs the effect, so the previous timer is cancelled. In auto-dismiss it's only a safety net.
 
-**Interview Q:** *Is this auto-hide effect a debounce?* No. A debounce collapses many events into one call after they stop. This effect reacts to one state change and schedules one follow-up. The shape is similar (`setTimeout` + `clearTimeout` in an effect), but the purpose is different.
+**Interview Q:** *Is this auto-hide effect a debounce?*
 
-**Interview Q:** *Debounce vs throttle for a search box?* Debounce: you want one request after the user stops typing. Throttle fits continuous events where you want regular updates, such as scroll position or resize.
+No. A debounce collapses many events into one call after they stop. This effect reacts to one state change and schedules one follow-up. The shape is similar (`setTimeout` + `clearTimeout` in an effect), but the purpose is different.
+
+**Interview Q:** *Debounce vs throttle for a search box?*
+
+Debounce: you want one request after the user stops typing. Throttle fits continuous events where you want regular updates, such as scroll position or resize.
 
 ### 53. Effect cleanup for timers
 
@@ -1273,11 +1347,17 @@ const startEditing = () => {
 };
 ```
 
-**Interview Q:** *What happens if you don't clear a timer?* It still fires later. It may update state the user has already moved past (hiding a newer message too early), or try to update an unmounted component. With `setInterval`, the leak repeats forever. Modern React no longer warns about updates after unmount, but the bug in your logic remains.
+**Interview Q:** *What happens if you don't clear a timer?*
 
-**Interview Q:** *Why not call `setTimeout` straight after `setSaved(true)` in the save function?* It would work, but nothing would cancel it on unmount, and you'd have to manage the timer ID yourself (for example in a ref). Putting it in an effect that depends on `saved` ties the timer's lifetime to the state it controls.
+It still fires later. It may update state the user has already moved past (hiding a newer message too early), or try to update an unmounted component. With `setInterval`, the leak repeats forever. Modern React no longer warns about updates after unmount, but the bug in your logic remains.
 
-**Interview Q:** *The same `saved` state + timer effect is now in two components. What would you do?* Extract a custom hook (see #18), e.g. `useAutoDismiss(ms)` returning `[visible, show, hide]`. Each component keeps its own state (hooks share logic, not state), and the timer and cleanup are written once. A common rule of thumb is to extract on the second or third copy, not before.
+**Interview Q:** *Why not call `setTimeout` straight after `setSaved(true)` in the save function?*
+
+It would work, but nothing would cancel it on unmount, and you'd have to manage the timer ID yourself (for example in a ref). Putting it in an effect that depends on `saved` ties the timer's lifetime to the state it controls.
+
+**Interview Q:** *The same `saved` state + timer effect is now in two components. What would you do?*
+
+Extract a custom hook (see #18), e.g. `useAutoDismiss(ms)` returning `[visible, show, hide]`. Each component keeps its own state (hooks share logic, not state), and the timer and cleanup are written once. A common rule of thumb is to extract on the second or third copy, not before.
 
 ### 54. Save feedback: saving, success, error
 
@@ -1334,9 +1414,13 @@ const save = async () => {
 {error && <ErrorState message={error} onRetry={save} />}
 ```
 
-**Interview Q:** *Optimistic vs pessimistic updates?* **Pessimistic** (used here): wait for the server, then update the UI. It's simple and always accurate, but it feels slower. **Optimistic**: update the UI immediately, then roll back if the request fails. It feels instant, but needs rollback logic. Use optimistic updates for frequent, low-risk actions (likes); use pessimistic updates for important decisions (hiring status).
+**Interview Q:** *Optimistic vs pessimistic updates?*
 
-**Interview Q:** *How do you prevent a form from being submitted twice?* Disable the submit button and inputs while saving (`<fieldset disabled>`). For extra safety, check a "busy" ref at the start of the handler (see #22), since a ref updates immediately.
+**Pessimistic** (used here): wait for the server, then update the UI. It's simple and always accurate, but it feels slower. **Optimistic**: update the UI immediately, then roll back if the request fails. It feels instant, but needs rollback logic. Use optimistic updates for frequent, low-risk actions (likes); use pessimistic updates for important decisions (hiring status).
+
+**Interview Q:** *How do you prevent a form from being submitted twice?*
+
+Disable the submit button and inputs while saving (`<fieldset disabled>`). For extra safety, check a "busy" ref at the start of the handler (see #22), since a ref updates immediately.
 
 ---
 
@@ -1407,11 +1491,17 @@ const error = errors[field.name];
 {error && <p id={errorId}>{error}</p>}
 ```
 
-**Interview Q:** *What does `keyof` return?* A union of string literal types, one per property name. `keyof { a: string; b: number }` is `"a" | "b"`.
+**Interview Q:** *What does `keyof` return?*
 
-**Interview Q:** *`Partial<Record<K, V>>` vs `Record<K, V>`?* `Record` requires every key; `Partial<Record>` allows any subset. Use `Record` when every key must exist (like `STATUS_LABELS`, a label for every status); use `Partial<Record>` when only some keys are present (like errors, only for invalid fields).
+A union of string literal types, one per property name. `keyof { a: string; b: number }` is `"a" | "b"`.
 
-**Interview Q:** *How would you write `Partial` yourself?* It's a mapped type: `type MyPartial<T> = { [K in keyof T]?: T[K] }`. It loops over each key of `T` (`K in keyof T`), adds `?`, and keeps the original value type (`T[K]`, an indexed access type). `Record<K, V>` is similar: `{ [P in K]: V }`.
+**Interview Q:** *`Partial<Record<K, V>>` vs `Record<K, V>`?*
+
+`Record` requires every key; `Partial<Record>` allows any subset. Use `Record` when every key must exist (like `STATUS_LABELS`, a label for every status); use `Partial<Record>` when only some keys are present (like errors, only for invalid fields).
+
+**Interview Q:** *How would you write `Partial` yourself?*
+
+It's a mapped type: `type MyPartial<T> = { [K in keyof T]?: T[K] }`. It loops over each key of `T` (`K in keyof T`), adds `?`, and keeps the original value type (`T[K]`, an indexed access type). `Record<K, V>` is similar: `{ [P in K]: V }`.
 
 ---
 
@@ -1503,13 +1593,21 @@ notifyCandidateSaved();
 const { saveCount } = useCandidateUpdates();
 ```
 
-**Interview Q:** *When would you use context instead of props?* When many components, or distant ones, need the same value: theme, the signed-in user, locale, or a cross-page signal like this one. For a value one or two levels down, props are simpler and clearer.
+**Interview Q:** *When would you use context instead of props?*
 
-**Interview Q:** *Why wrap `useContext` in a custom hook?* One import for callers, a clear error if the provider is missing (instead of a confusing `null` bug), and `null` is removed from the type, so callers don't need checks.
+When many components, or distant ones, need the same value: theme, the signed-in user, locale, or a cross-page signal like this one. For a value one or two levels down, props are simpler and clearer.
 
-**Interview Q:** *Can you use context in a Next.js Server Component?* No. Context needs client-side React. Make the provider a Client Component (`"use client"`) that takes `children`, and render it from the Server Component layout. The pages passed in as `children` can still be Server Components.
+**Interview Q:** *Why wrap `useContext` in a custom hook?*
 
-**Interview Q:** *Context vs a state library (Redux, Zustand)?* Context is built in and fine for values that change rarely. Every component that reads a context re-renders when its value changes, so large, frequently changing state is better in a store with selectors, where a component only re-renders for the slice it uses.
+One import for callers, a clear error if the provider is missing (instead of a confusing `null` bug), and `null` is removed from the type, so callers don't need checks.
+
+**Interview Q:** *Can you use context in a Next.js Server Component?*
+
+No. Context needs client-side React. Make the provider a Client Component (`"use client"`) that takes `children`, and render it from the Server Component layout. The pages passed in as `children` can still be Server Components.
+
+**Interview Q:** *Context vs a state library (Redux, Zustand)?*
+
+Context is built in and fine for values that change rarely. Every component that reads a context re-renders when its value changes, so large, frequently changing state is better in a store with selectors, where a component only re-renders for the slice it uses.
 
 ### 57. `useMemo` and `useCallback` for a context value
 
@@ -1544,11 +1642,17 @@ const notifyCandidateSaved = useCallback(() => {
 | Use for | An object/array passed to a context, a prop, or a dependency array; an expensive calculation | A function passed to a context, a prop, or a dependency array |
 | Here | The context `value` object | `notifyCandidateSaved` |
 
-**Interview Q:** *Difference between `useMemo` and `useCallback`?* `useMemo` caches a value; `useCallback` caches a function. `useCallback(fn, deps)` is the same as `useMemo(() => fn, deps)`.
+**Interview Q:** *Difference between `useMemo` and `useCallback`?*
 
-**Interview Q:** *Why memoize a context value?* Readers re-render whenever the value is a new reference. An inline `{...}` object is new on every render, so every reader would re-render even when nothing changed.
+`useMemo` caches a value; `useCallback` caches a function. `useCallback(fn, deps)` is the same as `useMemo(() => fn, deps)`.
 
-**Interview Q:** *Should you always use `useMemo`?* No. It has a cost and makes code harder to read. Use it when the **reference** matters (context values, props of memoized children, effect dependencies) or the calculation is genuinely slow. The React Compiler can add this memoization automatically.
+**Interview Q:** *Why memoize a context value?*
+
+Readers re-render whenever the value is a new reference. An inline `{...}` object is new on every render, so every reader would re-render even when nothing changed.
+
+**Interview Q:** *Should you always use `useMemo`?*
+
+No. It has a cost and makes code harder to read. Use it when the **reference** matters (context values, props of memoized children, effect dependencies) or the calculation is genuinely slow. The React Compiler can add this memoization automatically.
 
 ### 58. Signal vs data: refetch after a save instead of patching
 
@@ -1580,9 +1684,13 @@ const pages = await Promise.all(
 setCandidates(pages.flatMap((response) => response.data));
 ```
 
-**Interview Q:** *After a mutation, refetch or update the cache manually?* Refetching is simpler and always correct, especially with server-side filters, sorting, or pagination; it costs extra requests. Manual cache updates are instant and cheaper, but you must re-apply every rule the server would. Libraries like TanStack Query offer both: `invalidateQueries` (refetch) and `setQueryData` (manual update).
+**Interview Q:** *After a mutation, refetch or update the cache manually?*
 
-**Interview Q:** *Why put a counter in context instead of the saved candidate?* The list doesn't need the candidate; it needs to know its data is out of date. A counter that changes on every save is the simplest value to put in an effect's dependency array.
+Refetching is simpler and always correct, especially with server-side filters, sorting, or pagination; it costs extra requests. Manual cache updates are instant and cheaper, but you must re-apply every rule the server would. Libraries like TanStack Query offer both: `invalidateQueries` (refetch) and `setQueryData` (manual update).
+
+**Interview Q:** *Why put a counter in context instead of the saved candidate?*
+
+The list doesn't need the candidate; it needs to know its data is out of date. A counter that changes on every save is the simplest value to put in an effect's dependency array.
 
 ### 59. A type-safe generic setter: `K extends keyof T`, `T[K]`, `NonNullable`
 
@@ -1643,13 +1751,21 @@ const draft = drafts[candidate.id]?.progress; // { status, stage } | undefined
 const editing = draft !== undefined;
 ```
 
-**Interview Q:** *What does `K extends keyof T` mean in a generic?* `K` is a type parameter limited to the keys of `T`. Inside the function you can then use `T[K]` safely, and callers can only pass real keys. It's the standard pattern for typed getters and setters, like `function get<T, K extends keyof T>(obj: T, key: K): T[K]`.
+**Interview Q:** *What does `K extends keyof T` mean in a generic?*
 
-**Interview Q:** *What is an indexed access type?* `T[K]` looks up the type of property `K` in `T`, just like `obj[key]` looks up a value. With a union of keys it gives a union of types: `Candidate["status" | "stage"]` is `CandidateStatus | CandidateStage`.
+`K` is a type parameter limited to the keys of `T`. Inside the function you can then use `T[K]` safely, and callers can only pass real keys. It's the standard pattern for typed getters and setters, like `function get<T, K extends keyof T>(obj: T, key: K): T[K]`.
 
-**Interview Q:** *What does `NonNullable<T>` do?* It removes `null` and `undefined` from `T`. Here the draft parts are optional (`T | undefined`), but when you set one you must pass an actual value. Built in, it's `T & {}`.
+**Interview Q:** *What is an indexed access type?*
 
-**Interview Q:** *Why not `part: string` and `values: any`?* It would compile, but typos and wrong shapes would only fail at runtime. With `K extends DraftPart` and `CandidateDraft[K]`, both mistakes are compile errors, and the editor autocompletes `"general"` and `"progress"`.
+`T[K]` looks up the type of property `K` in `T`, just like `obj[key]` looks up a value. With a union of keys it gives a union of types: `Candidate["status" | "stage"]` is `CandidateStatus | CandidateStage`.
+
+**Interview Q:** *What does `NonNullable<T>` do?*
+
+It removes `null` and `undefined` from `T`. Here the draft parts are optional (`T | undefined`), but when you set one you must pass an actual value. Built in, it's `T & {}`.
+
+**Interview Q:** *Why not `part: string` and `values: any`?*
+
+It would compile, but typos and wrong shapes would only fail at runtime. With `K extends DraftPart` and `CandidateDraft[K]`, both mistakes are compile errors, and the editor autocompletes `"general"` and `"progress"`.
 
 ## Forms and dialog accessibility
 
@@ -1698,9 +1814,13 @@ const editing = draft !== undefined; // derived: a draft means the form is open
 />
 ```
 
-**Interview Q:** *Controlled vs uncontrolled: when to use which?* Controlled when the parent needs the value: to validate as you type, keep it after the component unmounts, sync it with other UI, or reset it. Uncontrolled (including native inputs read on submit, e.g. with `FormData`) is simpler when only the final value matters.
+**Interview Q:** *Controlled vs uncontrolled: when to use which?*
 
-**Interview Q:** *What is "lifting state up"?* Moving state to the closest common parent of the components that need it, then passing it down as props. Here it went one step further, into context, because the two views are on different routes.
+Controlled when the parent needs the value: to validate as you type, keep it after the component unmounts, sync it with other UI, or reset it. Uncontrolled (including native inputs read on submit, e.g. with `FormData`) is simpler when only the final value matters.
+
+**Interview Q:** *What is "lifting state up"?*
+
+Moving state to the closest common parent of the components that need it, then passing it down as props. Here it went one step further, into context, because the two views are on different routes.
 
 ### 61. Accessible client-side validation
 
@@ -1745,9 +1865,13 @@ if (firstInvalid) {
 onSubmit(values);
 ```
 
-**Interview Q:** *If the server validates, why validate on the client?* Faster feedback, fewer wasted requests, and messages next to the right field. The server is still the source of truth.
+**Interview Q:** *If the server validates, why validate on the client?*
 
-**Interview Q:** *How do you make form errors accessible?* Link each message to its input with `aria-describedby`, mark the input `aria-invalid`, don't rely on color alone, and move focus to the first invalid field on submit.
+Faster feedback, fewer wasted requests, and messages next to the right field. The server is still the source of truth.
+
+**Interview Q:** *How do you make form errors accessible?*
+
+Link each message to its input with `aria-describedby`, mark the input `aria-invalid`, don't rely on color alone, and move focus to the first invalid field on submit.
 
 ### 62. `useId` and `form.requestSubmit()`
 
@@ -1776,9 +1900,13 @@ const retry = () => {
 <ErrorState ... onRetry={retry} />
 ```
 
-**Interview Q:** *Why `useId` instead of `Math.random()` or a counter?* Random IDs differ between the server render and hydration (a mismatch), and a module counter breaks with concurrent rendering. `useId` is stable and unique per instance.
+**Interview Q:** *Why `useId` instead of `Math.random()` or a counter?*
 
-**Interview Q:** *`form.submit()` vs `form.requestSubmit()`?* `submit()` sends the form directly, without the `submit` event or built-in validation. `requestSubmit()` acts like a real submit click, so your `onSubmit` handler runs.
+Random IDs differ between the server render and hydration (a mismatch), and a module counter breaks with concurrent rendering. `useId` is stable and unique per instance.
+
+**Interview Q:** *`form.submit()` vs `form.requestSubmit()`?*
+
+`submit()` sends the form directly, without the `submit` event or built-in validation. `requestSubmit()` acts like a real submit click, so your `onSubmit` handler runs.
 
 ### 63. Modal dialog focus: move in, trap, return
 
@@ -1827,9 +1955,13 @@ function trapTab(event: KeyboardEvent, root: HTMLElement) {
 }
 ```
 
-**Interview Q:** *What does an accessible modal need?* `role="dialog"`, `aria-modal="true"`, an accessible name (`aria-labelledby`), focus moved in on open, focus trapped inside, Escape to close, and focus returned to the trigger on close.
+**Interview Q:** *What does an accessible modal need?*
 
-**Interview Q:** *Other ways to trap focus?* The native `<dialog>` element with `showModal()` traps focus and handles Escape for you. The `inert` attribute on everything outside the modal makes it unfocusable. Libraries such as `focus-trap` also exist. A hand-written trap is fine when the layout makes those awkward.
+`role="dialog"`, `aria-modal="true"`, an accessible name (`aria-labelledby`), focus moved in on open, focus trapped inside, Escape to close, and focus returned to the trigger on close.
+
+**Interview Q:** *Other ways to trap focus?*
+
+The native `<dialog>` element with `showModal()` traps focus and handles Escape for you. The `inert` attribute on everything outside the modal makes it unfocusable. Libraries such as `focus-trap` also exist. A hand-written trap is fine when the layout makes those awkward.
 
 ---
 
@@ -1875,11 +2007,17 @@ const addNote = (note: Note) => {
 };
 ```
 
-**Interview Q:** *What is a stale closure in React?* A callback (often after `await`, or inside `setTimeout`/`setInterval`) that reads props or state from the render it was created in, not the current one. Fixes: functional updates (`setX((current) => …)`) when you only need the latest *state*; a "latest value" ref when you need the latest *prop* or value outside the setter; or cancel the work when inputs change.
+**Interview Q:** *What is a stale closure in React?*
 
-**Interview Q:** *The data fetch uses an `ignore` flag (#21). Why not use the same thing here?* `ignore` lives in an effect and is flipped by that effect's cleanup when `id` changes. The save runs from an **event handler** (a form submit), which has no cleanup. The ref plays the same role: "is this result still for what's on screen?"
+A callback (often after `await`, or inside `setTimeout`/`setInterval`) that reads props or state from the render it was created in, not the current one. Fixes: functional updates (`setX((current) => …)`) when you only need the latest *state*; a "latest value" ref when you need the latest *prop* or value outside the setter; or cancel the work when inputs change.
 
-**Interview Q:** *Could `useEffectEvent` (#26) replace the ref?* No. An Effect Event can only be called from inside effects. `addNote` is called from an event handler after `await`, so a ref is the right tool.
+**Interview Q:** *The data fetch uses an `ignore` flag (#21). Why not use the same thing here?*
+
+`ignore` lives in an effect and is flipped by that effect's cleanup when `id` changes. The save runs from an **event handler** (a form submit), which has no cleanup. The ref plays the same role: "is this result still for what's on screen?"
+
+**Interview Q:** *Could `useEffectEvent` (#26) replace the ref?*
+
+No. An Effect Event can only be called from inside effects. `addNote` is called from an event handler after `await`, so a ref is the right tool.
 
 ### 65. Update a ref in an effect, not during render
 
@@ -1908,9 +2046,13 @@ useEffect(() => {
 
 Rule of thumb: read and write refs in **effects and event handlers**, never in the render body. Use state for anything that must appear on screen.
 
-**Interview Q:** *Isn't there a tiny gap between the render and the effect where the ref is still old?* Yes, but nothing reads it then. `addNote` runs later, when a network request finishes. If code needed the new value before the browser paints, `useLayoutEffect` updates it earlier (synchronously after commit).
+**Interview Q:** *Isn't there a tiny gap between the render and the effect where the ref is still old?*
 
-**Interview Q:** *When is it okay to touch a ref during render?* Only for lazy initialization of the ref itself, e.g. `if (ref.current === null) ref.current = createExpensiveThing();`, which runs once and gives the same result every time.
+Yes, but nothing reads it then. `addNote` runs later, when a network request finishes. If code needed the new value before the browser paints, `useLayoutEffect` updates it earlier (synchronously after commit).
+
+**Interview Q:** *When is it okay to touch a ref during render?*
+
+Only for lazy initialization of the ref itself, e.g. `if (ref.current === null) ref.current = createExpensiveThing();`, which runs once and gives the same result every time.
 
 ---
 
@@ -1988,13 +2130,21 @@ const deleteMutation = useMutation({
 // Pending/error come from the mutation: deleteMutation.isPending, deleteMutation.error
 ```
 
-**Interview Q:** *Where should API calls live in a React app?* Not in presentational components. Put them in a typed API layer, and call them from data hooks (custom hooks or a library like React Query/SWR). Components call the hook's functions and own only UI state: pending, errors, success messages, focus.
+**Interview Q:** *Where should API calls live in a React app?*
 
-**Interview Q:** *Query vs mutation?* A query reads and can be cached, refetched, and shared. A mutation changes server data. After it succeeds, you either update the local data with the response (what this project does) or invalidate the query so it refetches.
+Not in presentational components. Put them in a typed API layer, and call them from data hooks (custom hooks or a library like React Query/SWR). Components call the hook's functions and own only UI state: pending, errors, success messages, focus.
 
-**Interview Q:** *Why does `saveNote` throw instead of setting an `error` state in the hook?* The hook's `error` is for loading the list. A failed save belongs to the composer that triggered it, so the caller catches it and keeps the user's text. Mixing both into one `error` would replace the whole list with an error for a single failed save.
+**Interview Q:** *Query vs mutation?*
 
-**Interview Q:** *Update local state with the response, or refetch after a mutation?* Using the response (like `setNotes([...current, note])`) is instant and saves a request. Refetching (#58) is simpler and always matches the server, especially when the change affects other data such as counts or sorting. React Query's `invalidateQueries` is the refetch approach.
+A query reads and can be cached, refetched, and shared. A mutation changes server data. After it succeeds, you either update the local data with the response (what this project does) or invalidate the query so it refetches.
+
+**Interview Q:** *Why does `saveNote` throw instead of setting an `error` state in the hook?*
+
+The hook's `error` is for loading the list. A failed save belongs to the composer that triggered it, so the caller catches it and keeps the user's text. Mixing both into one `error` would replace the whole list with an error for a single failed save.
+
+**Interview Q:** *Update local state with the response, or refetch after a mutation?*
+
+Using the response (like `setNotes([...current, note])`) is instant and saves a request. Refetching (#58) is simpler and always matches the server, especially when the change affects other data such as counts or sorting. React Query's `invalidateQueries` is the refetch approach.
 
 ### 67. One rule for the whole app: hooks own API calls and data, components own buttons and feedback
 
@@ -2031,11 +2181,17 @@ Why a single rule beats case-by-case choices:
 
 This is the hooks-era form of an older React idea: **container vs presentational components**. Containers fetched data and passed it down; presentational components only rendered props. Custom hooks replaced most container components, because the data logic can now live in a function instead of a wrapper component.
 
-**Interview Q:** *How do you structure data fetching in a React app?* A typed API layer (one function per endpoint), data hooks that call it and own the server state (custom hooks or React Query/SWR), and components that call the hooks and own only UI state. The rule: no API imports in components.
+**Interview Q:** *How do you structure data fetching in a React app?*
 
-**Interview Q:** *Container vs presentational components: is that still a thing?* The split still matters, but hooks replaced most container components. Today the "container" is usually a custom hook (`useCandidateNotes`) and the component that calls it, while small presentational pieces (`NoteCard`, `EmptyState`) just take props.
+A typed API layer (one function per endpoint), data hooks that call it and own the server state (custom hooks or React Query/SWR), and components that call the hooks and own only UI state. The rule: no API imports in components.
 
-**Interview Q:** *You find a component calling `fetch` directly. What would you change?* Move the request into the API layer (typed, with response validation), call it from a data hook that owns the data, and let the component call the hook's function and keep only its pending/error/success UI. Make the hook throw on failure so the component can show the error where it belongs.
+**Interview Q:** *Container vs presentational components: is that still a thing?*
+
+The split still matters, but hooks replaced most container components. Today the "container" is usually a custom hook (`useCandidateNotes`) and the component that calls it, while small presentational pieces (`NoteCard`, `EmptyState`) just take props.
+
+**Interview Q:** *You find a component calling `fetch` directly. What would you change?*
+
+Move the request into the API layer (typed, with response validation), call it from a data hook that owns the data, and let the component call the hook's function and keep only its pending/error/success UI. Make the hook throw on failure so the component can show the error where it belongs.
 
 ---
 
@@ -2092,11 +2248,17 @@ How to decide where UI state lives:
 - **Should survive a reload or be shareable as a link** → the URL (#39), like the list filters.
 - **Should survive closing the browser** → `localStorage` (or the server).
 
-**Interview Q:** *A user's form input disappears when they navigate between two views. Why, and how do you fix it?* The input lived in `useState` inside a component that unmounts on navigation, so its state was discarded. Lift it to a parent that stays mounted across both views: a context provider in a shared layout, a store, or the URL. Key it by entity ID so drafts for different records don't mix.
+**Interview Q:** *A user's form input disappears when they navigate between two views. Why, and how do you fix it?*
 
-**Interview Q:** *Why not put `saving` in the context too?* It describes a request this view started. After a switch, the new view didn't start that request and can't await it, so showing "Saving…" there would be a lie. Keep transient request state local; keep the user's *intent* (text, which dialog is open) in shared state.
+The input lived in `useState` inside a component that unmounts on navigation, so its state was discarded. Lift it to a parent that stays mounted across both views: a context provider in a shared layout, a store, or the URL. Key it by entity ID so drafts for different records don't mix.
 
-**Interview Q:** *Wouldn't the `key` prop or `<Activity>` help?* `key` does the opposite: changing it forces a remount and **resets** state. `<Activity mode="hidden">` (#44) keeps a hidden tree's state alive, but only within one tree. Here the two views are separate routes, so shared state above them is the direct fix.
+**Interview Q:** *Why not put `saving` in the context too?*
+
+It describes a request this view started. After a switch, the new view didn't start that request and can't await it, so showing "Saving…" there would be a lie. Keep transient request state local; keep the user's *intent* (text, which dialog is open) in shared state.
+
+**Interview Q:** *Wouldn't the `key` prop or `<Activity>` help?*
+
+`key` does the opposite: changing it forces a remount and **resets** state. `<Activity mode="hidden">` (#44) keeps a hidden tree's state alive, but only within one tree. Here the two views are separate routes, so shared state above them is the direct fix.
 
 ### 69. "Missing" vs "empty": `undefined` vs `""` (the truthiness bug)
 
@@ -2128,9 +2290,13 @@ Related tools:
 - `??` (#10) falls back only on `null`/`undefined`: `count ?? 1` keeps `0`, but `count || 1` replaces it.
 - `key in obj` or `Object.hasOwn(obj, key)` asks "is the key there?", even when the value is `undefined`.
 
-**Interview Q:** *What's wrong with `if (value)` as an existence check?* It also rejects valid falsy values: `0`, `""`, `false`. Check what you actually mean: `value !== undefined`, `value != null` (null or undefined), or `key in obj`.
+**Interview Q:** *What's wrong with `if (value)` as an existence check?*
 
-**Interview Q:** *`||` vs `??`?* `a || b` uses `b` when `a` is any falsy value. `a ?? b` uses `b` only when `a` is `null` or `undefined`. Use `??` for defaults when `0` or `""` are real values.
+It also rejects valid falsy values: `0`, `""`, `false`. Check what you actually mean: `value !== undefined`, `value != null` (null or undefined), or `key in obj`.
+
+**Interview Q:** *`||` vs `??`?*
+
+`a || b` uses `b` when `a` is any falsy value. `a ?? b` uses `b` only when `a` is `null` or `undefined`. Use `??` for defaults when `0` or `""` are real values.
 
 ### 70. State that survives when it shouldn't: `<Activity>` and resetting in effect cleanup
 
@@ -2184,11 +2350,17 @@ useEffect(() => {
 
 How to spot this kind of bug: a screen that "remembers" a finished action (a success message, an open dialog, a spinner) when you come back to it. Ask: *does this route stay mounted when I leave it?*
 
-**Interview Q:** *What does React's `<Activity>` do?* With `mode="hidden"` it hides a subtree without unmounting it: state and DOM are kept, effects are cleaned up, and updates are deferred. With `mode="visible"` again, effects re-run with the kept state. Next.js uses it with `cacheComponents` so Back/Forward restore pages instantly, scroll and form input included.
+**Interview Q:** *What does React's `<Activity>` do?*
 
-**Interview Q:** *A component shows stale UI when the user returns to a page. How do you fix it?* First find out why the state survived (`<Activity>`, a cache, a context above the route). Then reset the one-off state at the right moment: in an effect cleanup (runs on hide and unmount), when the action finishes, or by changing a `key` to force a fresh mount. Don't reset everything: keeping state on Back is usually the feature, not the bug.
+With `mode="hidden"` it hides a subtree without unmounting it: state and DOM are kept, effects are cleaned up, and updates are deferred. With `mode="visible"` again, effects re-run with the kept state. Next.js uses it with `cacheComponents` so Back/Forward restore pages instantly, scroll and form input included.
 
-**Interview Q:** *Why not reset `created` right before calling `onCreated`?* That only covers the timer firing. If the user leaves while the message is showing (Close, Back, Expand), the timer is cancelled and the reset never runs. The cleanup covers every way of leaving.
+**Interview Q:** *A component shows stale UI when the user returns to a page. How do you fix it?*
+
+First find out why the state survived (`<Activity>`, a cache, a context above the route). Then reset the one-off state at the right moment: in an effect cleanup (runs on hide and unmount), when the action finishes, or by changing a `key` to force a fresh mount. Don't reset everything: keeping state on Back is usually the feature, not the bug.
+
+**Interview Q:** *Why not reset `created` right before calling `onCreated`?*
+
+That only covers the timer firing. If the user leaves while the message is showing (Close, Back, Expand), the timer is cancelled and the reset never runs. The cleanup covers every way of leaving.
 
 ---
 
@@ -2250,9 +2422,13 @@ export function toCreatePayload(
 }
 ```
 
-**Interview Q:** *Difference between `field?: string` and `field: string | undefined`?* With `?`, the key can be missing entirely. With `| undefined`, the key must be written but can hold `undefined`. Under `exactOptionalPropertyTypes`, `?:` also forbids explicitly setting `undefined`.
+**Interview Q:** *Difference between `field?: string` and `field: string | undefined`?*
 
-**Interview Q:** *Why not reuse the response type for the request?* The response has server-set fields (`id`, `status`, `applied_at`, …) the client must not send, and its optional values are `null`, not missing. Derive the request type from the response type (`Pick`/`Omit`) so names stay in sync, then adjust what differs.
+With `?`, the key can be missing entirely. With `| undefined`, the key must be written but can hold `undefined`. Under `exactOptionalPropertyTypes`, `?:` also forbids explicitly setting `undefined`.
+
+**Interview Q:** *Why not reuse the response type for the request?*
+
+The response has server-set fields (`id`, `status`, `applied_at`, …) the client must not send, and its optional values are `null`, not missing. Derive the request type from the response type (`Pick`/`Omit`) so names stay in sync, then adjust what differs.
 
 ### 72. A sentinel ID (`new`): one set of routes and URL helpers for view and create
 
@@ -2287,9 +2463,13 @@ const { candidate, loading, error, retry, updateStatus, updateInfo } =
 
 The trade-off: the sentinel must never be a valid real ID. UUIDs guarantee that here; with numeric IDs, `new` is also safe, but a name-based slug could clash.
 
-**Interview Q:** *In Next.js, would `app/candidates/new/page.tsx` or `[id]` win for `/candidates/new`?* A static segment always takes priority over a dynamic one, so a `new` folder would win. This project uses the `[id]` route for both, branching on the ID, to reuse the page shell and its buttons.
+**Interview Q:** *In Next.js, would `app/candidates/new/page.tsx` or `[id]` win for `/candidates/new`?*
 
-**Interview Q:** *Why put "create" in the URL at all instead of a `useState(isOpen)`?* A URL works with Back/Forward, survives a refresh, and can be linked to. It also lets two different views (drawer and full page) agree on what is open, which local state in one component can't.
+A static segment always takes priority over a dynamic one, so a `new` folder would win. This project uses the `[id]` route for both, branching on the ID, to reuse the page shell and its buttons.
+
+**Interview Q:** *Why put "create" in the URL at all instead of a `useState(isOpen)`?*
+
+A URL works with Back/Forward, survives a refresh, and can be linked to. It also lets two different views (drawer and full page) agree on what is open, which local state in one component can't.
 
 ### 73. Read browser state at click time instead of during render
 
@@ -2320,9 +2500,13 @@ const openCreateForm = () => {
 
 Rule: **read browser-only values in event handlers or effects, not during render**. Read them during render (with a hook) only when the rendered output itself depends on them.
 
-**Interview Q:** *What is a hydration mismatch?* The HTML the server rendered differs from the client's first render, e.g. because the client read `window.innerWidth` or `Date.now()` while rendering. React warns and may re-render the tree. Fix it by reading such values in effects/handlers, or rendering a placeholder until mounted.
+**Interview Q:** *What is a hydration mismatch?*
 
-**Interview Q:** *CSS media queries vs `matchMedia` in JS?* Use CSS (`max-md:hidden`) for what is shown: it needs no JS and has no mismatch. Use `matchMedia` when **behavior** changes, like which URL a click opens.
+The HTML the server rendered differs from the client's first render, e.g. because the client read `window.innerWidth` or `Date.now()` while rendering. React warns and may re-render the tree. Fix it by reading such values in effects/handlers, or rendering a placeholder until mounted.
+
+**Interview Q:** *CSS media queries vs `matchMedia` in JS?*
+
+Use CSS (`max-md:hidden`) for what is shown: it needs no JS and has no mismatch. Use `matchMedia` when **behavior** changes, like which URL a click opens.
 
 ### 74. `inert` for an overlay that blocks the content underneath
 
@@ -2353,7 +2537,9 @@ After a successful create, the form stays on screen, blurred, under "Candidate c
 | `aria-hidden="true"` | ❌ | ❌ | ✅ (but focusable items stay reachable: an a11y bug) |
 | `inert` | ✅ | ✅ | ✅ |
 
-**Interview Q:** *How do you stop focus reaching content behind a modal?* The native `<dialog>` with `showModal()` makes everything outside it inert automatically. Otherwise set `inert` on the background (or the blocked part), or trap Tab by hand (#63).
+**Interview Q:** *How do you stop focus reaching content behind a modal?*
+
+The native `<dialog>` with `showModal()` makes everything outside it inert automatically. Otherwise set `inert` on the background (or the blocked part), or trap Tab by hand (#63).
 
 ---
 

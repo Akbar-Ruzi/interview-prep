@@ -108,7 +108,9 @@ This CSS stops the page scrolling behind the open modal:
 html:has(dialog[open]) { overflow: hidden; }
 ```
 
-**Interview Q:** *How would you build an accessible modal?* Use the native `<dialog>` with `showModal()`: it handles focus trapping, Esc, the backdrop and returning focus. Label it with `aria-labelledby`. Libraries (Radix, Headless UI) are an option when you need more control, but the native element covers most cases with zero JS weight.
+**Interview Q:** *How would you build an accessible modal?*
+
+Use the native `<dialog>` with `showModal()`: it handles focus trapping, Esc, the backdrop and returning focus. Label it with `aria-labelledby`. Libraries (Radix, Headless UI) are an option when you need more control, but the native element covers most cases with zero JS weight.
 
 ### 2. `useId` for accessible ids
 
@@ -121,7 +123,9 @@ const titleId = useId();
 </dialog>
 ```
 
-**Interview Q:** *Why not `Math.random()` or a counter for ids?* They differ between the server render and the browser render, which causes a hydration mismatch. A hard-coded id breaks when the component is rendered twice on one page. `useId` solves both.
+**Interview Q:** *Why not `Math.random()` or a counter for ids?*
+
+They differ between the server render and the browser render, which causes a hydration mismatch. A hard-coded id breaks when the component is rendered twice on one page. `useId` solves both.
 
 ### 3. A finite state machine with `useState`
 
@@ -163,7 +167,9 @@ const toggle = () => {
 .gourd[data-state="closed"] .pop  { opacity: 0; }
 ```
 
-**Interview Q:** *Why one `state` string instead of `isOpen` + `isAnimating`?* Two booleans allow four combinations, and some are impossible (`isOpen && isClosing`). A single state makes impossible states impossible, and each transition lives in one place. For bigger flows you can use `useReducer` or XState.
+**Interview Q:** *Why one `state` string instead of `isOpen` + `isAnimating`?*
+
+Two booleans allow four combinations, and some are impossible (`isOpen && isClosing`). A single state makes impossible states impossible, and each transition lives in one place. For bigger flows you can use `useReducer` or XState.
 
 ### 4. Timers in effects, with cleanup
 
@@ -199,7 +205,9 @@ useEffect(() => {
 }, [status]);
 ```
 
-**Interview Q:** *What happens if you forget `clearTimeout`?* The callback still runs later and sets state on a component that may be gone or in a different state, which causes bugs (and in Strict Mode, effects run twice in development, so a missing cleanup shows up as double timers).
+**Interview Q:** *What happens if you forget `clearTimeout`?*
+
+The callback still runs later and sets state on a component that may be gone or in a different state, which causes bugs (and in Strict Mode, effects run twice in development, so a missing cleanup shows up as double timers).
 
 ### 5. Changing `key` to remount a component (and restart its animation)
 
@@ -218,7 +226,9 @@ const [picks, setPicks] = useState(0);   // how many times a chip was clicked
 </g>
 ```
 
-**Interview Q:** *How do you reset a component's internal state?* Change its `key`. React treats it as a different component, so all state, refs and DOM are recreated. Common uses: resetting a form when the selected user changes, or replaying an animation.
+**Interview Q:** *How do you reset a component's internal state?*
+
+Change its `key`. React treats it as a different component, so all state, refs and DOM are recreated. Common uses: resetting a form when the selected user changes, or replaying an animation.
 
 ### 6. Functional state updates
 
@@ -230,7 +240,9 @@ setMessage((m) => (m + 1) % heroData.caravan.length);   // cycle through message
 setErrors((prev) => ({ ...prev, [name]: false }));      // update one key of an object
 ```
 
-**Interview Q:** *Why `setCount(c => c + 1)`?* Inside event listeners, timers and effects, the `count` variable can be stale (it is the value from the render that created the closure). The function form always receives the latest value.
+**Interview Q:** *Why `setCount(c => c + 1)`?*
+
+Inside event listeners, timers and effects, the `count` variable can be stale (it is the value from the render that created the closure). The function form always receives the latest value.
 
 ### 7. `useRef` for DOM nodes and imperative browser APIs
 
@@ -251,7 +263,9 @@ useEffect(() => {
 <div ref={strip} className="caravan">…</div>
 ```
 
-**Interview Q:** *When is `ref.current` set?* After React commits the DOM, so read it in an effect or an event handler, never during render (it is `null` on the first render).
+**Interview Q:** *When is `ref.current` set?*
+
+After React commits the DOM, so read it in an effect or an event handler, never during render (it is `null` on the first render).
 
 ### 8. Subscribing to browser events in `useEffect`
 
@@ -290,7 +304,9 @@ useEffect(() => {
 }, []);
 ```
 
-**Interview Q:** *Why can't you read `window` during render in Next.js?* Components also render on the server, where `window` doesn't exist. Browser-only code goes in `useEffect` (runs only in the browser, after hydration) or in event handlers.
+**Interview Q:** *Why can't you read `window` during render in Next.js?*
+
+Components also render on the server, where `window` doesn't exist. Browser-only code goes in `useEffect` (runs only in the browser, after hydration) or in event handlers.
 
 ### 9. `IntersectionObserver`: pause work that is off screen
 
@@ -312,7 +328,9 @@ CSS pauses every animation inside when `data-paused` is true:
 .caravan[data-paused="true"] * { animation-play-state: paused !important; }
 ```
 
-**Interview Q:** *Name uses of `IntersectionObserver`.* Lazy-loading images, infinite scroll, scroll-triggered animations, analytics ("was this seen?"), and pausing videos/animations off screen to save CPU and battery.
+**Interview Q:** *Name uses of `IntersectionObserver`.*
+
+Lazy-loading images, infinite scroll, scroll-triggered animations, analytics ("was this seen?"), and pausing videos/animations off screen to save CPU and battery.
 
 ### 10. Two conditions, one result: track each source separately
 
@@ -330,7 +348,9 @@ const observer = new IntersectionObserver(([entry]) => {
 document.addEventListener("visibilitychange", update);
 ```
 
-**Interview Q:** *What's the bug in toggling state from two independent events?* The last event wins, so one condition can overwrite the other. Store the inputs and derive the result (same idea as derived state in React).
+**Interview Q:** *What's the bug in toggling state from two independent events?*
+
+The last event wins, so one condition can overwrite the other. Store the inputs and derive the result (same idea as derived state in React).
 
 ### 11. Content in data files, UI in components
 
@@ -376,7 +396,9 @@ const gourdSnippets = {
 };
 ```
 
-**Interview Q:** *Why separate content from components?* Easier edits, reuse (the same data feeds the home preview and the full page), testability, and it's one step from moving the content to a CMS or an API.
+**Interview Q:** *Why separate content from components?*
+
+Easier edits, reuse (the same data feeds the home preview and the full page), testability, and it's one step from moving the content to a CMS or an API.
 
 ### 12. Rendering a list, and keys in nested lists
 
@@ -395,7 +417,9 @@ Index keys are fine **here** because the lines never reorder, get inserted or de
 ))}
 ```
 
-**Interview Q:** *When is `key={index}` a bug?* When items can be reordered, inserted or removed: React matches elements by key, so state (inputs, focus, animations) ends up attached to the wrong item.
+**Interview Q:** *When is `key={index}` a bug?*
+
+When items can be reordered, inserted or removed: React matches elements by key, so state (inputs, focus, animations) ends up attached to the wrong item.
 
 ### 13. A tiny parser that returns JSX (`**bold**` → `<strong>`)
 
@@ -410,7 +434,9 @@ const withBold = (text) =>
   );
 ```
 
-**Interview Q:** *Why not `dangerouslySetInnerHTML`?* It injects raw HTML, so any user-controlled text could run scripts (XSS). Returning React elements keeps React's automatic escaping.
+**Interview Q:** *Why not `dangerouslySetInnerHTML`?*
+
+It injects raw HTML, so any user-controlled text could run scripts (XSS). Returning React elements keeps React's automatic escaping.
 
 ### 14. Form validation with an object of checks, focus the first error
 
@@ -455,7 +481,9 @@ Each input is wired for screen readers:
 {errors[name] && <small id={`e-${name}`}>{form.errors[name]}</small>}
 ```
 
-**Interview Q:** *Controlled or uncontrolled inputs here?* Uncontrolled: the values are only needed on submit, so reading `form.elements` avoids a re-render on every keystroke. Controlled inputs are better when the UI reacts to each keystroke (live validation, formatting, dependent fields).
+**Interview Q:** *Controlled or uncontrolled inputs here?*
+
+Uncontrolled: the values are only needed on submit, so reading `form.elements` avoids a re-render on every keystroke. Controlled inputs are better when the UI reacts to each keystroke (live validation, formatting, dependent fields).
 
 ### 15. A honeypot field against spam bots
 
@@ -466,7 +494,9 @@ A hidden field that humans never see or fill. Bots fill every field, so a value 
 if (fields._gotcha.value) return;
 ```
 
-**Interview Q:** *How do you reduce form spam without a CAPTCHA?* A honeypot field, a minimum time-to-submit, server-side rate limiting, and only then an invisible CAPTCHA (Turnstile, reCAPTCHA v3).
+**Interview Q:** *How do you reduce form spam without a CAPTCHA?*
+
+A honeypot field, a minimum time-to-submit, server-side rate limiting, and only then an invisible CAPTCHA (Turnstile, reCAPTCHA v3).
 
 ### 16. Accessible custom buttons (`role`, `tabIndex`, `aria-pressed`, Enter/Space)
 
@@ -488,7 +518,9 @@ The tech chips are SVG `<g>` elements, not `<button>`s, so everything a button g
 >
 ```
 
-**Interview Q:** *What does a `<div onClick>` lack compared with a `<button>`?* Focusability (`tabIndex`), the role announced to screen readers, keyboard activation (Enter and Space), and disabled semantics. Prefer a real `<button>`; when you can't (inside SVG), add all of them.
+**Interview Q:** *What does a `<div onClick>` lack compared with a `<button>`?*
+
+Focusability (`tabIndex`), the role announced to screen readers, keyboard activation (Enter and Space), and disabled semantics. Prefer a real `<button>`; when you can't (inside SVG), add all of them.
 
 ### 17. `aria-disabled` vs `disabled`
 
@@ -506,7 +538,9 @@ Here the button is only busy for ~4s, and a keyboard user who just pressed it wo
   className="aria-disabled:opacity-55 aria-disabled:cursor-default">
 ```
 
-**Interview Q:** *When would you choose `aria-disabled`?* When the control is temporarily unavailable and focus must stay put, or when you want it discoverable (with a tooltip explaining why it's disabled).
+**Interview Q:** *When would you choose `aria-disabled`?*
+
+When the control is temporarily unavailable and focus must stay put, or when you want it discoverable (with a tooltip explaining why it's disabled).
 
 ### 18. One component, two layouts: a `preview` prop
 
@@ -535,7 +569,9 @@ const Experience = ({ preview = false }) => {
 // app/experience/page.js: <Experience />
 ```
 
-**Interview Q:** *Prop flag or two components?* A flag is fine while the differences are small (count, heading, a link). If the variants keep diverging, split them and share the inner pieces instead.
+**Interview Q:** *Prop flag or two components?*
+
+A flag is fine while the differences are small (count, heading, a link). If the variants keep diverging, split them and share the inner pieces instead.
 
 ### 19. `useLayoutEffect` vs `useEffect`: run before paint
 
@@ -563,7 +599,9 @@ useLayoutEffect(() => {
 }, [pathname]);
 ```
 
-**Interview Q:** *When would you pick `useLayoutEffect`, and what's the cost?* When you must read layout or change the DOM before the user sees the frame (tooltips positioned from a measurement, avoiding a flash). The cost: it blocks painting until it finishes, so keep it short. It also doesn't run on the server (React warns in SSR), so only use it for browser-only work.
+**Interview Q:** *When would you pick `useLayoutEffect`, and what's the cost?*
+
+When you must read layout or change the DOM before the user sees the frame (tooltips positioned from a measurement, avoiding a flash). The cost: it blocks painting until it finishes, so keep it short. It also doesn't run on the server (React warns in SSR), so only use it for browser-only work.
 
 ### 20. Capture-phase listeners: run before another component's handler
 
@@ -589,7 +627,9 @@ const onClick = (e) => {
 window.addEventListener("click", onClick, true); // true = capture phase
 ```
 
-**Interview Q:** *What's the difference between `stopPropagation()` and `preventDefault()`?* `preventDefault()` cancels the browser's default action (following the link) but the event keeps travelling, so other handlers still run and can check `e.defaultPrevented`. `stopPropagation()` stops the event reaching other elements' handlers but doesn't cancel the default action.
+**Interview Q:** *What's the difference between `stopPropagation()` and `preventDefault()`?*
+
+`preventDefault()` cancels the browser's default action (following the link) but the event keeps travelling, so other handlers still run and can check `e.defaultPrevented`. `stopPropagation()` stops the event reaching other elements' handlers but doesn't cancel the default action.
 
 ---
 
@@ -611,7 +651,9 @@ In this site only 5 of 14 components are client components, each for a reason:
 
 `Hero` stays a server component even though it renders the client `HeroGourd` and `Caravan`: a server component can import and render client components.
 
-**Interview Q:** *What does `"use client"` actually do?* It marks a boundary: that module and everything it imports are bundled for the browser and hydrated. It doesn't mean "render only on the client" (client components still render to HTML on the server first).
+**Interview Q:** *What does `"use client"` actually do?*
+
+It marks a boundary: that module and everything it imports are bundled for the browser and hydrated. It doesn't mean "render only on the client" (client components still render to HTML on the server first).
 
 ### 22. Static export (`output: 'export'`)
 
@@ -625,7 +667,9 @@ const nextConfig = {
 };
 ```
 
-**Interview Q:** *What do you give up with a static export?* Anything that needs a Node server at request time: API routes, server actions, middleware, ISR/on-demand revalidation, cookies/headers in server components, and the built-in image optimization.
+**Interview Q:** *What do you give up with a static export?*
+
+Anything that needs a Node server at request time: API routes, server actions, middleware, ISR/on-demand revalidation, cookies/headers in server components, and the built-in image optimization.
 
 ### 23. `next/font`: self-hosted fonts as CSS variables (and variable fonts with `opsz`)
 
@@ -650,13 +694,17 @@ The CSS uses those variables, with fallback fonts:
 }
 ```
 
-**Interview Q:** *Why load only the weights you use?* Each weight is a separate file. Note the flip side: if CSS asks for a weight you didn't load (e.g. `font-semibold` = 600 with only 400/500 loaded), the browser fakes it ("synthetic bold"), which looks worse and can change text width.
+**Interview Q:** *Why load only the weights you use?*
+
+Each weight is a separate file. Note the flip side: if CSS asks for a weight you didn't load (e.g. `font-semibold` = 600 with only 400/500 loaded), the browser fakes it ("synthetic bold"), which looks worse and can change text width.
 
 **Variable fonts.** A variable font is one file with *axes* (weight `wght`, width, optical size `opsz`…) instead of one file per weight. The optical-size axis redraws letters for their size: big headings get a tighter, more condensed cut, small text a looser, more readable one. With `font-optical-sizing: auto` (the default) the browser picks the `opsz` value from the `font-size`, no extra CSS. In my hero the big "Hey There, I'm Akbar." got 8% narrower and matched the design exactly once I loaded `opsz`. In `next/font`, `axes` only works on the variable font, so you leave `weight` out.
 
 Gotcha I hit: with only 600 and 800 loaded, `font-bold` (700) used to *snap* to the nearest loaded file (800), and `font-normal` on a heading showed as 600. The variable font draws every weight exactly, so those headings suddenly looked different. Fix: set each one to the weight it was really showing (`font-extrabold`, `font-semibold`).
 
-**Interview Q:** *Static weights or a variable font?* Few weights (1–2): static files are usually smaller. Many weights, or you want an axis like `opsz` or fine-tuned weights: one variable file is simpler and often smaller in total. Either way, check what weights your CSS actually asks for.
+**Interview Q:** *Static weights or a variable font?*
+
+Few weights (1–2): static files are usually smaller. Many weights, or you want an axis like `opsz` or fine-tuned weights: one variable file is simpler and often smaller in total. Either way, check what weights your CSS actually asks for.
 
 ### 24. Metadata API
 
@@ -674,7 +722,9 @@ export const metadata = {
 export const metadata = { title: "Experience · Akbar Ruzi" };
 ```
 
-**Interview Q:** *How do you set per-page `<title>` in the App Router?* Export `metadata` (static) or `generateMetadata` (async, from params/data) from a `layout` or `page`. Next merges them from the root down. It only works in Server Components.
+**Interview Q:** *How do you set per-page `<title>` in the App Router?*
+
+Export `metadata` (static) or `generateMetadata` (async, from params/data) from a `layout` or `page`. Next merges them from the root down. It only works in Server Components.
 
 ### 25. `next/link` vs a plain `<a>` (and `usePathname`)
 
@@ -691,7 +741,9 @@ const to = (hash) => (isHome ? hash : `/${hash}`);
 <Anchor href={to("#about")}>About</Anchor>
 ```
 
-**Interview Q:** *What does `next/link` add over `<a>`?* Client-side navigation (no full reload, layout state kept) and automatic prefetching of the target route when the link is visible.
+**Interview Q:** *What does `next/link` add over `<a>`?*
+
+Client-side navigation (no full reload, layout state kept) and automatic prefetching of the target route when the link is visible.
 
 ### 26. Layouts persist across navigations, pages remount
 
@@ -707,7 +759,9 @@ The page transition has two halves: on the old page a click marks "leaving" (a r
 </body>
 ```
 
-**Interview Q:** *Where do you keep UI that must survive navigation (a player, a progress bar, a transition)?* In a layout above the pages that change. Also useful: `template.js` is the opposite, a layout that **does** remount on every navigation.
+**Interview Q:** *Where do you keep UI that must survive navigation (a player, a progress bar, a transition)?*
+
+In a layout above the pages that change. Also useful: `template.js` is the opposite, a layout that **does** remount on every navigation.
 
 ### 27. Hydration mismatches and `suppressHydrationWarning`
 
@@ -733,7 +787,9 @@ Two cases in this project:
 }
 ```
 
-**Interview Q:** *How do you render something that depends on the browser (window size, a media query, `localStorage`) without a hydration mismatch?* Render the same thing on server and client first, then update in `useEffect`; or let CSS handle it (media queries); or render that part only on the client (`dynamic(..., { ssr: false })`).
+**Interview Q:** *How do you render something that depends on the browser (window size, a media query, `localStorage`) without a hydration mismatch?*
+
+Render the same thing on server and client first, then update in `useEffect`; or let CSS handle it (media queries); or render that part only on the client (`dynamic(..., { ssr: false })`).
 
 ---
 
@@ -765,7 +821,9 @@ The same functions work inside Tailwind classes:
 <dialog className="w-[min(100%-32px,440px)]">…</dialog>
 ```
 
-**Interview Q:** *How do you do fluid typography?* `clamp()` with a viewport-based middle value and readable min/max bounds; better with `rem` bounds so it respects the user's font size setting.
+**Interview Q:** *How do you do fluid typography?*
+
+`clamp()` with a viewport-based middle value and readable min/max bounds; better with `rem` bounds so it respects the user's font size setting.
 
 ### 29. CSS Grid: `minmax(0, 1fr)` and `min-width: 0`
 
@@ -784,7 +842,9 @@ The same problem exists for grid and flex **items**: they default to `min-width:
                max-lg:grid-cols-[36px_minmax(0,1fr)] max-sm:grid-cols-1">
 ```
 
-**Interview Q:** *My grid column overflows even though it's `1fr`. Why?* The implicit minimum is the content's min-content width. Use `minmax(0, 1fr)`, or `min-width: 0` (`overflow: hidden` also works) on the item.
+**Interview Q:** *My grid column overflows even though it's `1fr`. Why?*
+
+The implicit minimum is the content's min-content width. Use `minmax(0, 1fr)`, or `min-width: 0` (`overflow: hidden` also works) on the item.
 
 ### 30. Stacking contexts: `z-index` and `isolation: isolate`
 
@@ -805,7 +865,9 @@ In this project: the sticky nav is `z-50`; the page-transition progress bar is `
 </div>
 ```
 
-**Interview Q:** *I set `z-index: 9999` and it's still behind. Why?* An ancestor created a stacking context with a lower order (often a `transform` or `opacity`), and the element can't leave it. Fix the ancestor's stacking, or use `isolation: isolate` deliberately to contain a local `z-index`.
+**Interview Q:** *I set `z-index: 9999` and it's still behind. Why?*
+
+An ancestor created a stacking context with a lower order (often a `transform` or `opacity`), and the element can't leave it. Fix the ancestor's stacking, or use `isolation: isolate` deliberately to contain a local `z-index`.
 
 ### 31. `:has()`: a parent selector
 
@@ -820,7 +882,9 @@ html:has(dialog[open]) {
 
 Other common uses: `form:has(:invalid)` to style the whole form, `.card:has(img)` for cards with an image, `label:has(input:checked)`.
 
-**Interview Q:** *What did you need JavaScript for before `:has()`?* Toggling a class on a parent when a child changed state (an open modal, a checked box, a focused field). Now CSS can watch it directly.
+**Interview Q:** *What did you need JavaScript for before `:has()`?*
+
+Toggling a class on a parent when a child changed state (an open modal, a checked box, a focused field). Now CSS can watch it directly.
 
 ### 32. Entry animations with `@starting-style` (and `:empty`)
 
@@ -839,7 +903,9 @@ A CSS transition needs a "before" value, but an element that has just appeared (
 <p role="status" className="transition duration-300 empty:hidden starting:translate-y-1 starting:opacity-0">
 ```
 
-**Interview Q:** *Why doesn't my transition run when an element goes from `display: none` to `block`?* There's no rendered "before" state to transition from. Use `@starting-style` (plus `transition-behavior: allow-discrete` if you also animate `display`), or animate with `@keyframes`.
+**Interview Q:** *Why doesn't my transition run when an element goes from `display: none` to `block`?*
+
+There's no rendered "before" state to transition from. Use `@starting-style` (plus `transition-behavior: allow-discrete` if you also animate `display`), or animate with `@keyframes`.
 
 ### 33. Safe-area insets on notched phones: `env(safe-area-inset-*)`
 
@@ -864,7 +930,9 @@ The sticky nav uses the same inset:
 <nav className="sticky top-[calc(env(safe-area-inset-top,0px)+10px)] z-50">
 ```
 
-**Interview Q:** *How do you keep content clear of the notch?* `env(safe-area-inset-*)` in padding and positions, usually inside `max()` with your normal spacing.
+**Interview Q:** *How do you keep content clear of the notch?*
+
+`env(safe-area-inset-*)` in padding and positions, usually inside `max()` with your normal spacing.
 
 ### 34. Readable text: `text-wrap: balance` and `ch` widths
 
@@ -883,7 +951,9 @@ Paragraphs use a `ch` width:
 <p className="max-w-[62ch]">…</p>
 ```
 
-**Interview Q:** *Why limit line length?* Very long lines make it hard for the eye to find the start of the next line; about 45–75 characters reads best. `max-width` in `ch` keeps that true at any screen size and font size.
+**Interview Q:** *Why limit line length?*
+
+Very long lines make it hard for the eye to find the start of the next line; about 45–75 characters reads best. `max-width` in `ch` keeps that true at any screen size and font size.
 
 ---
 
@@ -901,7 +971,9 @@ The browser renders in steps: style → layout → paint → composite. Changing
 }
 ```
 
-**Interview Q:** *Why is animating `left` slower than `transform: translateX`?* `left` triggers layout and paint on every frame; `transform` only composites an already-painted layer.
+**Interview Q:** *Why is animating `left` slower than `transform: translateX`?*
+
+`left` triggers layout and paint on every frame; `transform` only composites an already-painted layer.
 
 ### 36. CSS custom properties per element: staggered animations
 
@@ -920,7 +992,9 @@ const fly = (dx, dy, d) => ({ "--dx": `${dx}px`, "--dy": `${dy}px`, "--d": `${d}
 }
 ```
 
-**Interview Q:** *How do you pass a value from React to CSS?* A CSS custom property in `style` (`style={{ "--x": value }}`), then use `var(--x)` in CSS. Better than inline `transform` strings: the animation logic stays in CSS.
+**Interview Q:** *How do you pass a value from React to CSS?*
+
+A CSS custom property in `style` (`style={{ "--x": value }}`), then use `var(--x)` in CSS. Better than inline `transform` strings: the animation logic stays in CSS.
 
 ### 37. Playing a keyframe animation in reverse
 
@@ -936,7 +1010,9 @@ Closing the gourd reuses the opening keyframes with `animation-direction: revers
 }
 ```
 
-**Interview Q:** *What does `animation-fill-mode: both` do?* Applies the starting keyframe during the delay (`backwards`) and keeps the end keyframe after the animation (`forwards`).
+**Interview Q:** *What does `animation-fill-mode: both` do?*
+
+Applies the starting keyframe during the delay (`backwards`) and keeps the end keyframe after the animation (`forwards`).
 
 ### 38. `prefers-reduced-motion`
 
@@ -967,7 +1043,9 @@ Two ways to write it: `motion-reduce:` takes the animation away (opt-out), `moti
 <li className="cursor-default transition-colors hover:bg-cta hover:text-white motion-safe:hover:animate-wiggle">
 ```
 
-**Interview Q:** *Remove all animation, or reduce it?* Reduce: keep the content and meaning, drop large movement, parallax, auto-playing loops and smooth scrolling. Short fades are usually fine.
+**Interview Q:** *Remove all animation, or reduce it?*
+
+Reduce: keep the content and meaning, drop large movement, parallax, auto-playing loops and smooth scrolling. Short fades are usually fine.
 
 ### 39. `transform-box: fill-box` for SVG transforms
 
@@ -984,7 +1062,9 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 }
 ```
 
-**Interview Q:** *Why does my SVG element rotate around the wrong point?* Its transform origin is in SVG user space (the viewport's top-left). Set `transform-box: fill-box` and a `transform-origin` relative to the element.
+**Interview Q:** *Why does my SVG element rotate around the wrong point?*
+
+Its transform origin is in SVG user space (the viewport's top-left). Set `transform-box: fill-box` and a `transform-origin` relative to the element.
 
 ### 40. Container query units (`cqw`)
 
@@ -999,7 +1079,9 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 }
 ```
 
-**Interview Q:** *Media queries vs container queries?* Media queries react to the viewport; container queries react to a parent's size, so a component adapts wherever it's placed (sidebar, grid cell, full width).
+**Interview Q:** *Media queries vs container queries?*
+
+Media queries react to the viewport; container queries react to a parent's size, so a component adapts wherever it's placed (sidebar, grid cell, full width).
 
 ### 41. Tailwind v4: `@theme` tokens and `@layer`
 
@@ -1023,7 +1105,9 @@ In SVG, `transform-origin` is measured from the SVG's own top-left corner by def
 }
 ```
 
-**Interview Q:** *Why use cascade layers?* To control priority between groups of CSS (reset → base → components → utilities) without specificity wars or `!important`.
+**Interview Q:** *Why use cascade layers?*
+
+To control priority between groups of CSS (reset → base → components → utilities) without specificity wars or `!important`.
 
 ### 42. Sticky nav: `scroll-padding-top` and smooth scrolling (and doing the #section scroll yourself)
 
@@ -1036,7 +1120,9 @@ html {
 }
 ```
 
-**Interview Q:** *Clicking `#contact` hides the heading under the sticky header. Fix?* `scroll-padding-top` on `html` (or `scroll-margin-top` on the targets), equal to the header height plus some space.
+**Interview Q:** *Clicking `#contact` hides the heading under the sticky header. Fix?*
+
+`scroll-padding-top` on `html` (or `scroll-margin-top` on the targets), equal to the header height plus some space.
 
 **When CSS alone wasn't enough (measured in this project):**
 - **Landing spot off by 20px.** The scroll reveal (43) moves each section down 20px with `transform` until it's on screen. The browser's #hash scroll measures the *transformed* box, so sections landed at 92px instead of 112px. `getBoundingClientRect()` includes transforms; `offsetTop` doesn't (it's layout only), so measure with `offsetTop`.
@@ -1070,7 +1156,9 @@ if (url.pathname === location.pathname) { scrollToHash(url.hash); history.pushSt
 else router.push(url.pathname + url.hash, { scroll: false }); // …then scrollToHash(hash, { lead: 200 }) once it renders
 ```
 
-**Interview Q:** *Your "scroll to section" lands a little off, but only sometimes. What could it be?* A `transform` on the target or an ancestor (an entrance animation, a sticky header that shrinks), which `getBoundingClientRect` and the browser's anchor scroll both include. Measure layout with `offsetTop` / `offsetParent`, or wait until the animation has finished.
+**Interview Q:** *Your "scroll to section" lands a little off, but only sometimes. What could it be?*
+
+A `transform` on the target or an ancestor (an entrance animation, a sticky header that shrinks), which `getBoundingClientRect` and the browser's anchor scroll both include. Measure layout with `offsetTop` / `offsetParent`, or wait until the animation has finished.
 
 ### 43. Scroll-driven animations (`animation-timeline: view()`)
 
@@ -1098,7 +1186,9 @@ A normal CSS animation runs on a clock (e.g. 0.5s). A scroll-driven animation ru
 }
 ```
 
-**Interview Q:** *Scroll-driven animations vs an `IntersectionObserver` reveal?* CSS: zero JS, follows the scroll exactly (also backwards), runs on the compositor; but newer browser support. `IntersectionObserver`: works everywhere and can trigger time-based animations once, but needs JS and care so content isn't hidden if the script fails.
+**Interview Q:** *Scroll-driven animations vs an `IntersectionObserver` reveal?*
+
+CSS: zero JS, follows the scroll exactly (also backwards), runs on the compositor; but newer browser support. `IntersectionObserver`: works everywhere and can trigger time-based animations once, but needs JS and care so content isn't hidden if the script fails.
 
 ---
 
@@ -1141,7 +1231,9 @@ const audio = () => {
 export const playOpen = () => play(cork, 0.67);   // timed to the lid coming off
 ```
 
-**Interview Q:** *Why might audio not play on page load?* Autoplay policies: an `AudioContext` created without a user gesture starts `suspended`. Create or `resume()` it in response to a click or key press.
+**Interview Q:** *Why might audio not play on page load?*
+
+Autoplay policies: an `AudioContext` created without a user gesture starts `suspended`. Create or `resume()` it in response to a click or key press.
 
 ### 45. Restarting a CSS animation from JavaScript
 
@@ -1157,7 +1249,9 @@ b.style.animation = "";        // back to the stylesheet's animation: it starts 
 b.style.animationDelay = `${delay}s`;
 ```
 
-**Interview Q:** *Why does `void el.offsetWidth` work?* Style changes are batched until the browser next needs layout. Reading a layout property flushes them, so the browser sees "no animation" before it sees the animation again.
+**Interview Q:** *Why does `void el.offsetWidth` work?*
+
+Style changes are batched until the browser next needs layout. Reading a layout property flushes them, so the browser sees "no animation" before it sees the animation again.
 
 ---
 
@@ -1175,7 +1269,9 @@ Lighthouse (lab) can't measure INP without interactions, so it reports **TBT** (
 
 Ways this project avoids CLS: the gourd sits in an `aspect-ratio` box (space reserved before it draws), the open/close button is part of the layout from the first paint, and every animation uses `transform`/`opacity`.
 
-**Interview Q:** *What causes CLS, and how do you fix it?* Images/embeds without dimensions (set `width`/`height` or `aspect-ratio`), content inserted above existing content (reserve space), and web fonts changing text size (see next concept).
+**Interview Q:** *What causes CLS, and how do you fix it?*
+
+Images/embeds without dimensions (set `width`/`height` or `aspect-ratio`), content inserted above existing content (reserve space), and web fonts changing text size (see next concept).
 
 ### 47. Layout shift from web fonts
 
@@ -1217,7 +1313,9 @@ Other fixes, in general:
 
 How it was found: hold back the `.woff2` requests (or throttle the network hard) so the fallback paints first, then record `PerformanceObserver({ type: "layout-shift" })` entries; each entry's `sources` lists the elements that moved. A first guess (the faked 600 weight) turned out wrong once measured.
 
-**Interview Q:** *What is FOUT, and how do you prevent the shift it causes?* Flash Of Unstyled Text: the fallback shows first, then swaps to the web font. Prevent the jump with a matched fallback (`size-adjust`), preloading, and self-hosting (`next/font`), and test it with the real text: an automatic fallback is matched on average width, so all-caps or monospace text can still be much wider.
+**Interview Q:** *What is FOUT, and how do you prevent the shift it causes?*
+
+Flash Of Unstyled Text: the fallback shows first, then swaps to the web font. Prevent the jump with a matched fallback (`size-adjust`), preloading, and self-hosting (`next/font`), and test it with the real text: an automatic fallback is matched on average width, so all-caps or monospace text can still be much wider.
 
 ### 48. Measuring before optimizing (Lighthouse, a fair comparison)
 
@@ -1235,10 +1333,14 @@ npx lighthouse http://localhost:4101/ --form-factor=mobile --only-categories=per
 
 Lessons: compare like with like (same server, same throttling), repeat runs, and read the diagnostics. Both versions had the same slow LCP, mostly because the local server didn't compress files (Lighthouse listed 360 KiB of savings), which real hosting does automatically.
 
-**Interview Q:** *Lab data vs field data?* Lab (Lighthouse) is a controlled, repeatable test on simulated slow hardware, which is good for comparing changes. Field data (CrUX, `web-vitals` in real browsers) shows what real users experience. Google ranks on field data.
+**Interview Q:** *Lab data vs field data?*
+
+Lab (Lighthouse) is a controlled, repeatable test on simulated slow hardware, which is good for comparing changes. Field data (CrUX, `web-vitals` in real browsers) shows what real users experience. Google ranks on field data.
 
 ### 49. Removing an animation library
 
 The old site used three animation libraries (`framer-motion`, `motion`, `motion-plus`), a 296 KB SVG component with ~89 animated paths, and a full-screen page transition that blocked every navigation for 1–1.5s. The redesign removed all of it; every animation is CSS keyframes. Home page First Load JS is now ~113 kB, including the interactive gourd.
 
-**Interview Q:** *When is a JS animation library worth it?* For gesture-driven or physics-based motion (drag, spring, layout animations between states, shared-element transitions). For entrance effects, loops and hover states, CSS keyframes and transitions are lighter and run off the main thread.
+**Interview Q:** *When is a JS animation library worth it?*
+
+For gesture-driven or physics-based motion (drag, spring, layout animations between states, shared-element transitions). For entrance effects, loops and hover states, CSS keyframes and transitions are lighter and run off the main thread.

@@ -166,19 +166,33 @@ venue: {
 },
 ```
 
-**Interview Q:** *What is `this: IEvent` in a function's parameter list?* It's a fake parameter that only declares the type of `this`. Without it, TypeScript can't tell what `this` is, and `strict` mode reports an error. It doesn't exist in the compiled JavaScript.
+**Interview Q:** *What is `this: IEvent` in a function's parameter list?*
 
-**Interview Q:** *Is `this` always the document in a Mongoose validator?* No. On `save()` and `create()` it's the document. With `findOneAndUpdate` and `runValidators: true`, `this` is the query, so `this.mode` is `undefined` and a rule like this one won't apply.
+It's a fake parameter that only declares the type of `this`. Without it, TypeScript can't tell what `this` is, and `strict` mode reports an error. It doesn't exist in the compiled JavaScript.
 
-**Interview Q:** *TypeScript already has types, so why do you need a schema?* TypeScript types are removed at compile time, so they can't check data that arrives at runtime, such as a request body. The schema does that check before anything is saved.
+**Interview Q:** *Is `this` always the document in a Mongoose validator?*
 
-**Interview Q:** *Is `extends Document` the recommended way to type a Mongoose model?* No. Mongoose's TypeScript docs recommend against it. They suggest a plain interface for the fields, such as `Schema<EventFields>`, and `HydratedDocument<EventFields>` where you need the full document type.
+No. On `save()` and `create()` it's the document. With `findOneAndUpdate` and `runValidators: true`, `this` is the query, so `this.mode` is `undefined` and a rule like this one won't apply.
 
-**Interview Q:** *With `type: [String]`, what happens if you save `tags: [123]`?* It's saved as `['123']`, because Mongoose converts simple values to the schema's type before validating. Values it can't convert, such as an object or a nested array, fail validation.
+**Interview Q:** *TypeScript already has types, so why do you need a schema?*
 
-**Interview Q:** *What does `_id: false` do on a subdocument, and when would you use it?* It stops Mongoose adding an `_id` to each item in the list. Use it when items are only ever read as part of their parent. Keep the `_id` if you need to find, update or remove one specific item, such as a comment in a list of comments.
+TypeScript types are removed at compile time, so they can't check data that arrives at runtime, such as a request body. The schema does that check before anything is saved.
 
-**Interview Q:** *Does a Mongoose `enum` always stop invalid values?* No. It runs when Mongoose validates, such as on `save()` and `create()`. `findOneAndUpdate` skips it unless you pass `runValidators: true`, and MongoDB itself doesn't know about the rule, so a write that bypasses Mongoose isn't checked.
+**Interview Q:** *Is `extends Document` the recommended way to type a Mongoose model?*
+
+No. Mongoose's TypeScript docs recommend against it. They suggest a plain interface for the fields, such as `Schema<EventFields>`, and `HydratedDocument<EventFields>` where you need the full document type.
+
+**Interview Q:** *With `type: [String]`, what happens if you save `tags: [123]`?*
+
+It's saved as `['123']`, because Mongoose converts simple values to the schema's type before validating. Values it can't convert, such as an object or a nested array, fail validation.
+
+**Interview Q:** *What does `_id: false` do on a subdocument, and when would you use it?*
+
+It stops Mongoose adding an `_id` to each item in the list. Use it when items are only ever read as part of their parent. Keep the `_id` if you need to find, update or remove one specific item, such as a comment in a list of comments.
+
+**Interview Q:** *Does a Mongoose `enum` always stop invalid values?*
+
+No. It runs when Mongoose validates, such as on `save()` and `create()`. `findOneAndUpdate` skips it unless you pass `runValidators: true`, and MongoDB itself doesn't know about the rule, so a write that bypasses Mongoose isn't checked.
 
 ### 2. `models.X || model()`: avoiding `OverwriteModelError`
 
@@ -190,7 +204,9 @@ const Event = models.Event || model<IEvent>('Event', EventSchema);
 export default Event;
 ```
 
-**Interview Q:** *Why not just call `model('Event', schema)`?* Because any module that runs again, such as after a hot reload, would try to register the model twice and throw.
+**Interview Q:** *Why not just call `model('Event', schema)`?*
+
+Because any module that runs again, such as after a hot reload, would try to register the model twice and throw.
 
 ### 3. Caching the database connection
 
@@ -238,7 +254,9 @@ async function connectDB(): Promise<typeof mongoose> {
 }
 ```
 
-**Interview Q:** *How do you manage database connections in serverless?* Cache one connection per instance on `global`, and cache the in-progress promise so concurrent requests share it. Each instance still holds its own connection, so many instances can still use up the limit.
+**Interview Q:** *How do you manage database connections in serverless?*
+
+Cache one connection per instance on `global`, and cache the in-progress promise so concurrent requests share it. Each instance still holds its own connection, so many instances can still use up the limit.
 
 ### 4. Pre-save hooks: generating a slug
 
@@ -294,9 +312,13 @@ slug: {
 },
 ```
 
-**Interview Q:** *What does `immutable: true` do in a Mongoose schema?* It allows the field to be set on a new document, then ignores later changes, both on `save()` and in updates like `findOneAndUpdate`. In my project, it stops an event's slug changing, so shared links keep working.
+**Interview Q:** *What does `immutable: true` do in a Mongoose schema?*
 
-**Interview Q:** *Why can't a Mongoose hook be an arrow function?* Arrow functions don't have their own `this`, and document middleware uses `this` to access the document.
+It allows the field to be set on a new document, then ignores later changes, both on `save()` and in updates like `findOneAndUpdate`. In my project, it stops an event's slug changing, so shared links keep working.
+
+**Interview Q:** *Why can't a Mongoose hook be an arrow function?*
+
+Arrow functions don't have their own `this`, and document middleware uses `this` to access the document.
 
 ### 5. `findOneAndUpdate` skips save hooks
 
@@ -323,7 +345,9 @@ event.set(allowedFields); // only the fields users may edit
 await event.save();       // runs validators and pre('save')
 ```
 
-**Interview Q:** *When would you use `save()` over `findOneAndUpdate`?* Use `save()` when you need document hooks and full validation. Use `findOneAndUpdate` when the update has to be atomic and doesn't depend on hooks.
+**Interview Q:** *When would you use `save()` over `findOneAndUpdate`?*
+
+Use `save()` when you need document hooks and full validation. Use `findOneAndUpdate` when the update has to be atomic and doesn't depend on hooks.
 
 ### 6. Indexes: unique, compound and redundant
 
@@ -346,7 +370,9 @@ BookingSchema.index({ eventId: 1, email: 1 }, { unique: true, name: 'uniq_event_
 [MONGOOSE] Warning: Duplicate schema index on {"email":1} found.
 ```
 
-**Interview Q:** *Does an index on `(a, b)` help a query that only filters on `b`?* Generally no. It helps queries on `a`, or on `a` and `b`, because the index is sorted by `a` first.
+**Interview Q:** *Does an index on `(a, b)` help a query that only filters on `b`?*
+
+Generally no. It helps queries on `a`, or on `a` and `b`, because the index is sorted by `a` first.
 
 ### 7. A unique index beats "check, then insert"
 
@@ -386,7 +412,9 @@ if (existingUser) {
 const createdUser = await User.create({ name, email, password: hashedPassword, role: 'user' });
 ```
 
-**Interview Q:** *What is error code 11000?* MongoDB's duplicate key error, returned when a write violates a unique index. Catching it and returning a clear message is the standard way to handle duplicates.
+**Interview Q:** *What is error code 11000?*
+
+MongoDB's duplicate key error, returned when a write violates a unique index. Catching it and returning a clear message is the standard way to handle duplicates.
 
 ### 8. Atomic updates: enforcing a limit under parallel requests
 
@@ -425,7 +453,9 @@ try {
 }
 ```
 
-**Interview Q:** *How do you enforce a limit safely under concurrency?* Combine the check and the update into one atomic operation, such as a conditional `$inc`, rather than reading first and writing later.
+**Interview Q:** *How do you enforce a limit safely under concurrency?*
+
+Combine the check and the update into one atomic operation, such as a conditional `$inc`, rather than reading first and writing later.
 
 ### 9. `.lean()`
 
@@ -435,7 +465,9 @@ try {
 const event = await Event.findOne({ slug: sanitizedSlug }).lean();
 ```
 
-**Interview Q:** *When shouldn't you use `.lean()`?* When you need to change and `save()` the document, or when you rely on virtuals, getters or document methods.
+**Interview Q:** *When shouldn't you use `.lean()`?*
+
+When you need to change and `save()` the document, or when you rely on virtuals, getters or document methods.
 
 ### 10. `userId?`: an optional field in the type and the schema
 
@@ -464,7 +496,9 @@ const BookingSchema = new Schema<IBooking>({
 });
 ```
 
-**Interview Q:** *What's the difference between `userId?: string` and `userId: string | undefined`?* With `?`, the property can be left out entirely. With `| undefined`, the property must be present, although its value can be `undefined`.
+**Interview Q:** *What's the difference between `userId?: string` and `userId: string | undefined`?*
+
+With `?`, the property can be left out entirely. With `| undefined`, the property must be present, although its value can be `undefined`.
 
 ### 11. `createBooking`: where the data actually gets saved
 
@@ -532,9 +566,13 @@ console.log('Create booking failed:', e);
 return { success: false, message: 'Unable to create booking right now. Please try again.' } satisfies CreateBookingResult;
 ```
 
-**Interview Q:** *Why get `userId` from `auth()` instead of passing it from the form?* A Server Action is a public endpoint, so a caller could send any ID they like. The session is checked on the server, so it can't be faked that way.
+**Interview Q:** *Why get `userId` from `auth()` instead of passing it from the form?*
 
-**Interview Q:** *Why is `e` typed as `unknown` in a `catch` block?* Anything can be thrown in JavaScript, not just an `Error`, so you have to check its shape before reading a property like `code`. That's what the `typeof` and `'code' in e` checks do. In strict TypeScript projects, `catch` variables default to `unknown`.
+A Server Action is a public endpoint, so a caller could send any ID they like. The session is checked on the server, so it can't be faked that way.
+
+**Interview Q:** *Why is `e` typed as `unknown` in a `catch` block?*
+
+Anything can be thrown in JavaScript, not just an `Error`, so you have to check its shape before reading a property like `code`. That's what the `typeof` and `'code' in e` checks do. In strict TypeScript projects, `catch` variables default to `unknown`.
 
 ### 12. Building a query from optional filters: `$and`, `$or`, `$ne`, `$in`
 
@@ -609,11 +647,17 @@ const similar = await Event.find({ _id: { $ne: event._id }, tags: { $in: event.t
 
 **Limitations to know.** A case-insensitive regex that isn't anchored to the start can't use an index efficiently, so MongoDB checks many documents. That's fine for a small collection, but a large one needs a text or search index. Also limit how long the search input can be.
 
-**Interview Q:** *How do you build a MongoDB query from optional filters?* Start an array with the conditions that always apply, push one condition for each filter that has a value, and return `{ $and: conditions }`.
+**Interview Q:** *How do you build a MongoDB query from optional filters?*
 
-**Interview Q:** *Why escape user input before `new RegExp()`?* Otherwise the user's text is treated as a pattern. It can match the wrong things, throw on invalid syntax, or run a slow pattern against the database.
+Start an array with the conditions that always apply, push one condition for each filter that has a value, and return `{ $and: conditions }`.
 
-**Interview Q:** *What's the catch with `{ field: { $ne: value } }`?* It also matches documents that don't have the field. If that matters, add `$exists: true` or make the field required in the schema.
+**Interview Q:** *Why escape user input before `new RegExp()`?*
+
+Otherwise the user's text is treated as a pattern. It can match the wrong things, throw on invalid syntax, or run a slow pattern against the database.
+
+**Interview Q:** *What's the catch with `{ field: { $ne: value } }`?*
+
+It also matches documents that don't have the field. If that matters, add `$exists: true` or make the field required in the schema.
 
 ### 13. From query to page data: lazy queries, `limit` and plain ids
 
@@ -657,13 +701,21 @@ const toRecord = (doc: EventDoc): EventRecord => ({
 const PUBLIC_FIELDS = "title slug description overview image venue location date time mode audience agenda organizer tags createdBy";
 ```
 
-**Interview Q:** *When does a Mongoose query actually run?* When it's awaited, or when `.then()` or `.exec()` is called. `find`, `select`, `sort` and `limit` only build it, which is why a condition can add `.limit()` before it runs.
+**Interview Q:** *When does a Mongoose query actually run?*
 
-**Interview Q:** *Why use `.limit()` instead of `.slice()`?* `.limit()` stops the extra documents from leaving the database, which saves memory and network time. It also has to come with a `.sort()`, or which documents you get isn't guaranteed.
+When it's awaited, or when `.then()` or `.exec()` is called. `find`, `select`, `sort` and `limit` only build it, which is why a condition can add `.limit()` before it runs.
 
-**Interview Q:** *Why convert `ObjectId` to a string before passing it to a Client Component?* Props crossing from server to client must be serializable, and React rejects class instances like `ObjectId`. A string works everywhere.
+**Interview Q:** *Why use `.limit()` instead of `.slice()`?*
 
-**Interview Q:** *Why is a field allowlist safer than an exclusion list?* With an exclusion list, any new field is exposed by default. With an allowlist, it's hidden by default.
+`.limit()` stops the extra documents from leaving the database, which saves memory and network time. It also has to come with a `.sort()`, or which documents you get isn't guaranteed.
+
+**Interview Q:** *Why convert `ObjectId` to a string before passing it to a Client Component?*
+
+Props crossing from server to client must be serializable, and React rejects class instances like `ObjectId`. A string works everywhere.
+
+**Interview Q:** *Why is a field allowlist safer than an exclusion list?*
+
+With an exclusion list, any new field is exposed by default. With an allowlist, it's hidden by default.
 
 ---
 
@@ -689,4 +741,6 @@ Together these cap the site at 100 x 200 = 20,000 bookings, so storage has a kno
 
 **Limits don't stop everything.** Someone could still fill an event's 200 spots with fake emails, and a per-email limit won't help because they can keep changing the address. That needs rate limiting or email verification, which are planned for after the prototype.
 
-**Interview Q:** *How would you stop users from running up your costs on a public app?* Find every way data can grow and cap each one, including a global cap that doesn't depend on user identity, because accounts are cheap to create. Then add rate limiting and email verification, and set up billing alerts or a free tier that can't charge you.
+**Interview Q:** *How would you stop users from running up your costs on a public app?*
+
+Find every way data can grow and cap each one, including a global cap that doesn't depend on user identity, because accounts are cheap to create. Then add rate limiting and email verification, and set up billing alerts or a free tier that can't charge you.

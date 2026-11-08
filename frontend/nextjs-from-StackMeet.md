@@ -40,7 +40,9 @@ return { success: false, message: 'Email is required.' } satisfies CreateBooking
 | `value as T` | Only loosely, and can hide mistakes | No, treated as `T` |
 | `value satisfies T` | Yes | Yes |
 
-**Interview Q:** *Why use `satisfies` instead of `as`?* `as` tells the compiler to trust you and can hide mistakes. `satisfies` makes the compiler verify the value.
+**Interview Q:** *Why use `satisfies` instead of `as`?*
+
+`as` tells the compiler to trust you and can hide mistakes. `satisfies` makes the compiler verify the value.
 
 ### 2. A generic filter function: `<T extends Shape>(items: T[]): T[]`
 
@@ -79,9 +81,13 @@ const result = filterEvents(cards, { q: "react" }); // CardEvent[], slug and dat
 filterEvents([{ title: "x" }], {});                 // error: missing location, mode, tags
 ```
 
-**Interview Q:** *What does `<T extends X>` do in a function signature?* It declares a type parameter limited to types that have at least `X`'s shape. Inside the function you can use `X`'s fields safely, and the return type can still be the caller's exact type `T`. That's how a reusable helper keeps full type information.
+**Interview Q:** *What does `<T extends X>` do in a function signature?*
 
-**Interview Q:** *Generic vs. using the base type directly?* With the base type, everything that comes out is widened to the base type and the extra fields are lost. With a generic, the input type flows through to the output.
+It declares a type parameter limited to types that have at least `X`'s shape. Inside the function you can use `X`'s fields safely, and the return type can still be the caller's exact type `T`. That's how a reusable helper keeps full type information.
+
+**Interview Q:** *Generic vs. using the base type directly?*
+
+With the base type, everything that comes out is widened to the base type and the extra fields are lost. With a generic, the input type flows through to the output.
 
 ### 3. Search filter logic: normalize input, OR inside a filter, AND between filters
 
@@ -142,7 +148,9 @@ return events.filter((event) => {
 
 With `where=online`, an **in-person** event in a city like "Onlineville, TX" failed the format check, then passed the city check, so it showed up as "online". The fix makes the two checks exclusive: `"online"` means check the format, anything else means check the city, never both. Free-text search often has edge cases like this, so it's worth asking "can a keyword accidentally match a different field?"
 
-**Interview Q:** *When should a filter use a ternary instead of `||`?* Use `||` when any of several checks may match the same input. Use a ternary when the input itself decides which single check applies, because `||` lets a value that fails the intended check slip through another one.
+**Interview Q:** *When should a filter use a ternary instead of `||`?*
+
+Use `||` when any of several checks may match the same input. Use a ternary when the input itself decides which single check applies, because `||` lets a value that fails the intended check slip through another one.
 
 **Step 3: read the URL safely.** In Next.js, `searchParams.q` is typed `string | string[] | undefined`, because a URL can repeat a key: `?q=a&q=b`.
 
@@ -153,11 +161,17 @@ export const firstParam = (value: string | string[] | undefined) =>
 
 `Array.isArray` is a type guard. In the `true` branch TypeScript knows `value` is `string[]`, and in the other branch it's `string | undefined`. That's type narrowing, also covered in [Talent Pipeline notes #4](./typescript-react-nextjs-from-Talent-Pipeline-Tracker.md#4-type-narrowing).
 
-**Interview Q:** *How would you combine several optional search filters?* Normalize each input, make each filter `!input || (ways it can match)`, then combine the filters with `&&`. An empty filter passes everything, so users can fill in any combination of boxes.
+**Interview Q:** *How would you combine several optional search filters?*
 
-**Interview Q:** *`.some()` vs `.every()` vs `.filter()`?* `.some()` returns a boolean: does at least one element pass? It stops at the first match. `.every()` returns a boolean: do all elements pass? It stops at the first failure. `.filter()` returns a new array of every element that passes.
+Normalize each input, make each filter `!input || (ways it can match)`, then combine the filters with `&&`. An empty filter passes everything, so users can fill in any combination of boxes.
 
-**Interview Q:** *Why is `searchParams.q` typed `string | string[] | undefined`?* A parameter can be missing, appear once, or repeat (`?tag=a&tag=b`). Code has to narrow it to the shape it expects before using it.
+**Interview Q:** *`.some()` vs `.every()` vs `.filter()`?*
+
+`.some()` returns a boolean: does at least one element pass? It stops at the first match. `.every()` returns a boolean: do all elements pass? It stops at the first failure. `.filter()` returns a new array of every element that passes.
+
+**Interview Q:** *Why is `searchParams.q` typed `string | string[] | undefined`?*
+
+A parameter can be missing, appear once, or repeat (`?tag=a&tag=b`). Code has to narrow it to the shape it expects before using it.
 
 ### 4. Upcoming events: compare date strings, sort with `localeCompare`
 
@@ -214,11 +228,17 @@ Joining date **and** time matters: two events on the same day are then ordered b
 - **`toISOString()` is UTC, not local time.** At 10 PM on Nov 7 in New York it's already Nov 8 in UTC, so the default `today` would be `"2026-11-08"` and today's evening events would disappear. A local date needs something like `new Date().toLocaleDateString("en-CA")`, which gives `YYYY-MM-DD` in the user's time zone.
 - **It filters by date only.** An event at 9 AM today still shows at 6 PM today. That's fine if "upcoming" means "today or later". If it means "not started yet", compare the full `` `${date} ${time}` `` string against the current date and time.
 
-**Interview Q:** *Why can you compare dates as strings here?* Because they're ISO `YYYY-MM-DD`: fixed width, zero-padded, biggest unit first. For that format, string order equals chronological order. Any other format should be parsed into a `Date` (or a timestamp) first.
+**Interview Q:** *Why can you compare dates as strings here?*
 
-**Interview Q:** *What does a `.sort()` comparator return, and does `.sort()` mutate?* Negative to put `a` first, positive to put `b` first, `0` to keep their order. `.sort()` mutates the array in place and also returns it, so sort a copy (`.filter()`, `[...arr]` or `.toSorted()`) when the input belongs to someone else.
+Because they're ISO `YYYY-MM-DD`: fixed width, zero-padded, biggest unit first. For that format, string order equals chronological order. Any other format should be parsed into a `Date` (or a timestamp) first.
 
-**Interview Q:** *What's the risk with `new Date().toISOString().slice(0, 10)` as "today"?* It's the UTC date. Near midnight it can be a day ahead of or behind the user's local date.
+**Interview Q:** *What does a `.sort()` comparator return, and does `.sort()` mutate?*
+
+Negative to put `a` first, positive to put `b` first, `0` to keep their order. `.sort()` mutates the array in place and also returns it, so sort a copy (`.filter()`, `[...arr]` or `.toSorted()`) when the input belongs to someone else.
+
+**Interview Q:** *What's the risk with `new Date().toISOString().slice(0, 10)` as "today"?*
+
+It's the UTC date. Near midnight it can be a day ahead of or behind the user's local date.
 
 ---
 
@@ -310,11 +330,17 @@ const raw = firstParam(searchParams.mode);       // from #3
 const mode = isEventMode(raw) ? raw : undefined; // anything unknown means "All"
 ```
 
-**Interview Q:** *Why make filters links instead of buttons with `useState`?* The URL becomes the single source of truth. Filters survive a refresh, the back button works, and the link can be shared. The server can read `searchParams` and filter before rendering, and the component needs no client JavaScript.
+**Interview Q:** *Why make filters links instead of buttons with `useState`?*
 
-**Interview Q:** *Why build the query with `URLSearchParams` instead of string concatenation?* It encodes special characters (spaces, `&`, `#`, `=`) correctly, and it's easy to add only the params that have values, so the other filters are kept.
+The URL becomes the single source of truth. Filters survive a refresh, the back button works, and the link can be shared. The server can read `searchParams` and filter before rendering, and the component needs no client JavaScript.
 
-**Interview Q:** *TypeScript says `mode` is `EventMode`. Why validate it?* Types are checked at compile time only. URL input arrives at runtime and can be any string, so it must be checked (for example with a type guard) before use.
+**Interview Q:** *Why build the query with `URLSearchParams` instead of string concatenation?*
+
+It encodes special characters (spaces, `&`, `#`, `=`) correctly, and it's easy to add only the params that have values, so the other filters are kept.
+
+**Interview Q:** *TypeScript says `mode` is `EventMode`. Why validate it?*
+
+Types are checked at compile time only. URL input arrives at runtime and can be any string, so it must be checked (for example with a type guard) before use.
 
 ---
 
@@ -359,9 +385,13 @@ const EventDetailsPage = ({ params }: EventPageProps) => (
 
 **Why it's worth having anyway:** without `Suspense`, visitors see nothing until all the data is ready. With it, the navbar and the fallback appear right away, and only the part inside the boundary waits. This applies in production too, because `next.config.ts` is used for both development and production, and the error stopped `npm run build`, so the site couldn't have been deployed.
 
-**Interview Q:** *Why use `<Suspense>` in a Server Component page?* To send the rest of the page immediately and stream the slow part in when it's ready. The `fallback` is what shows in the meantime, so one slow query doesn't hold up the whole page.
+**Interview Q:** *Why use `<Suspense>` in a Server Component page?*
 
-**Interview Q:** *What is Partial Prerendering?* The page's static parts are prerendered and sent immediately, then dynamic parts stream in through `<Suspense>` boundaries. Users see content fast, even when some data is slow.
+To send the rest of the page immediately and stream the slow part in when it's ready. The `fallback` is what shows in the meantime, so one slow query doesn't hold up the whole page.
+
+**Interview Q:** *What is Partial Prerendering?*
+
+The page's static parts are prerendered and sent immediately, then dynamic parts stream in through `<Suspense>` boundaries. Users see content fast, even when some data is slow.
 
 ### 7. Using `rewrites` as a reverse proxy for analytics
 
@@ -392,7 +422,9 @@ posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
 });
 ```
 
-**Interview Q:** *What's the difference between a redirect and a rewrite?* A redirect sends the browser to a new URL with a 3xx response. A rewrite serves the content from another location while keeping the original URL.
+**Interview Q:** *What's the difference between a redirect and a rewrite?*
+
+A redirect sends the browser to a new URL with a 3xx response. A rewrite serves the content from another location while keeping the original URL.
 
 ---
 
@@ -492,17 +524,29 @@ return {
 };
 ```
 
-**Interview Q:** *How do you detect a click outside an element in React?* Put a ref on the element, listen on `document`, and check `ref.current.contains(e.target)`. Add the listener in an effect and remove it in the cleanup.
+**Interview Q:** *How do you detect a click outside an element in React?*
 
-**Interview Q:** *Why store a DOM element in `useRef` instead of `useState`?* Changing a ref doesn't cause a re-render, and the element is only needed to call methods like `.focus()`. Keeping it in state would add renders for no visible change.
+Put a ref on the element, listen on `document`, and check `ref.current.contains(e.target)`. Add the listener in an effect and remove it in the cleanup.
 
-**Interview Q:** *Why can you call `.focus()` on the menu inside `useEffect`?* The effect runs after React has committed the update to the DOM, so the menu exists and the ref is attached. During render it wouldn't exist yet.
+**Interview Q:** *Why store a DOM element in `useRef` instead of `useState`?*
 
-**Interview Q:** *Why doesn't `removeEventListener(() => ...)` work with a new arrow function?* It matches by function reference. A new arrow function is a different object, so nothing gets removed and the original listener stays active.
+Changing a ref doesn't cause a re-render, and the element is only needed to call methods like `.focus()`. Keeping it in state would add renders for no visible change.
 
-**Interview Q:** *How do you wrap an index in both directions?* Use `(index + step + length) % length`. Adding `length` first keeps the value positive, because `%` in JavaScript can return a negative number.
+**Interview Q:** *Why can you call `.focus()` on the menu inside `useEffect`?*
 
-**Interview Q:** *What keyboard behavior does an accessible dropdown menu need?* Focus moves into the menu when it opens, arrow keys move between items, and Escape closes it and returns focus to the button that opened it. `aria-expanded` and `aria-haspopup` tell screen readers its state.
+The effect runs after React has committed the update to the DOM, so the menu exists and the ref is attached. During render it wouldn't exist yet.
+
+**Interview Q:** *Why doesn't `removeEventListener(() => ...)` work with a new arrow function?*
+
+It matches by function reference. A new arrow function is a different object, so nothing gets removed and the original listener stays active.
+
+**Interview Q:** *How do you wrap an index in both directions?*
+
+Use `(index + step + length) % length`. Adding `length` first keeps the value positive, because `%` in JavaScript can return a negative number.
+
+**Interview Q:** *What keyboard behavior does an accessible dropdown menu need?*
+
+Focus moves into the menu when it opens, arrow keys move between items, and Escape closes it and returns focus to the button that opened it. `aria-expanded` and `aria-haspopup` tell screen readers its state.
 
 ---
 
@@ -642,22 +686,42 @@ export function useAuthForm(initialMode: AuthMode = "sign-in") {
 <AuthPanel key={initialMode} initialMode={initialMode} />
 ```
 
-**Interview Q:** *Why does `{condition && <Field />}` keep the next input's value when it toggles?* React matches children by position. `false` holds that position, so the following element doesn't move and React keeps its DOM node and state.
+**Interview Q:** *Why does `{condition && <Field />}` keep the next input's value when it toggles?*
 
-**Interview Q:** *How would you force an input to reset when something changes?* Give it a different `key`. A new key tells React it's a different element, so it creates a fresh one.
+React matches children by position. `false` holds that position, so the following element doesn't move and React keeps its DOM node and state.
 
-**Interview Q:** *How do you type a component that wraps a native element?* Use `ComponentProps<"input">`, add your own props with `&`, and pass the rest through with a spread.
+**Interview Q:** *How would you force an input to reset when something changes?*
 
-**Interview Q:** *Does the order of `className` and `{...props}` matter?* Yes. Later props override earlier ones, so the spread's position decides whether the caller can replace a value.
+Give it a different `key`. A new key tells React it's a different element, so it creates a fresh one.
 
-**Interview Q:** *Why isn't `aria-selected` just decoration?* It exposes the state to assistive technology. Without it, a screen reader user can't tell which tab is active from a color change.
+**Interview Q:** *How do you type a component that wraps a native element?*
 
-**Interview Q:** *How do you stop signed-in users from seeing a sign-in form?* Check the session on the server before rendering the form, and redirect if there is one. With `cacheComponents`, that check has to be inside `<Suspense>`.
+Use `ComponentProps<"input">`, add your own props with `&`, and pass the rest through with a spread.
 
-**Interview Q:** *Why doesn't `useState(prop)` update when the prop changes?* The argument is only used on the first render. Later renders ignore it. To restart the state when the prop changes, give the component a `key` based on that prop.
+**Interview Q:** *Does the order of `className` and `{...props}` matter?*
 
-**Interview Q:** *When should UI state live in the URL instead of `useState`?* Use the URL when it should survive a refresh, work with the back button, or be shareable, like search filters. Use `useState` for short-lived details like which tab of a form is open.
+Yes. Later props override earlier ones, so the spread's position decides whether the caller can replace a value.
 
-**Interview Q:** *Why validate a value read from `searchParams`?* It comes from the URL, so it can be anything, and TypeScript types don't exist at runtime. Check it against the values you allow and fall back to a default.
+**Interview Q:** *Why isn't `aria-selected` just decoration?*
 
-**Interview Q:** *How do you retire a page without breaking old links?* Keep the route and redirect it to the new location. Use a temporary redirect (307) if it may change, or a permanent one (308) when it won't.
+It exposes the state to assistive technology. Without it, a screen reader user can't tell which tab is active from a color change.
+
+**Interview Q:** *How do you stop signed-in users from seeing a sign-in form?*
+
+Check the session on the server before rendering the form, and redirect if there is one. With `cacheComponents`, that check has to be inside `<Suspense>`.
+
+**Interview Q:** *Why doesn't `useState(prop)` update when the prop changes?*
+
+The argument is only used on the first render. Later renders ignore it. To restart the state when the prop changes, give the component a `key` based on that prop.
+
+**Interview Q:** *When should UI state live in the URL instead of `useState`?*
+
+Use the URL when it should survive a refresh, work with the back button, or be shareable, like search filters. Use `useState` for short-lived details like which tab of a form is open.
+
+**Interview Q:** *Why validate a value read from `searchParams`?*
+
+It comes from the URL, so it can be anything, and TypeScript types don't exist at runtime. Check it against the values you allow and fall back to a default.
+
+**Interview Q:** *How do you retire a page without breaking old links?*
+
+Keep the route and redirect it to the new location. Use a temporary redirect (307) if it may change, or a permanent one (308) when it won't.

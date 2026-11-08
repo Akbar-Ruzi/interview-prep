@@ -53,7 +53,9 @@ The deliverable is **design documentation, not code**. It must be precise enough
 that another developer can instrument the existing system without asking questions.
 ```
 
-**Interview Q:** *Why design a telemetry plan before writing code?* Instrumenting ad hoc produces inconsistent names, missing fields, and leaked sensitive data. A plan fixes the event names, the payload, and the reason for each event before anyone writes `track()`.
+**Interview Q:** *Why design a telemetry plan before writing code?*
+
+Instrumenting ad hoc produces inconsistent names, missing fields, and leaked sensitive data. A plan fixes the event names, the payload, and the reason for each event before anyone writes `track()`.
 
 ### 2. The golden rule: hypothesis → decision
 
@@ -67,7 +69,9 @@ Example: we capture `stock_threshold_triggered` because we need to know how ofte
 > which allows us to make the decision `[concrete decision]`."
 ```
 
-**Interview Q:** *How do you avoid collecting "just in case" data?* Tie every event to a decision. Data without a decision costs storage and money, adds privacy risk, and creates noise. Anything that fails the test goes into a "discarded" list with the reason.
+**Interview Q:** *How do you avoid collecting "just in case" data?*
+
+Tie every event to a decision. Data without a decision costs storage and money, adds privacy risk, and creates noise. Anything that fails the test goes into a "discarded" list with the reason.
 
 ### 3. Mandatory metrics vs identified opportunities
 
@@ -81,7 +85,9 @@ Example: we capture `stock_threshold_triggered` because we need to know how ofte
 | `api_latency_recorded`       | Performance    | identified | README + Solution |
 ```
 
-**Interview Q:** *Why not just implement the metrics stakeholders asked for?* Stakeholders ask for business metrics. They rarely think of operational signals like auth failures, latency, or frontend errors, which often matter just as much. Labeling the two makes it clear what's required and what's your proposal.
+**Interview Q:** *Why not just implement the metrics stakeholders asked for?*
+
+Stakeholders ask for business metrics. They rarely think of operational signals like auth failures, latency, or frontend errors, which often matter just as much. Labeling the two makes it clear what's required and what's your proposal.
 
 ### 4. Instrumentation points (touchpoints)
 
@@ -102,7 +108,9 @@ Each order submission ends in exactly one outcome: `order_validation_failed` (no
 or `inbound_order_created` / `outbound_order_created` (saved).
 ```
 
-**Interview Q:** *Should you track only successes?* No. Failures and rejections (validation errors, blocked actions) often tell you more: where users get stuck, or who is trying to bypass controls.
+**Interview Q:** *Should you track only successes?*
+
+No. Failures and rejections (validation errors, blocked actions) often tell you more: where users get stuck, or who is trying to bypass controls.
 
 ### 4e. Where to emit: backend vs frontend
 
@@ -115,7 +123,9 @@ The backend is the source of truth: a frontend that hides the option is not enou
 because the API can be called directly.
 ```
 
-**Interview Q:** *Why not fire `order_created` from the frontend when the user clicks Save?* The click doesn't mean the order was saved. Validation or the DB can still fail, retries can double-count, and client events get lost. Emit from the backend after the commit; keep frontend events for UI behaviour.
+**Interview Q:** *Why not fire `order_created` from the frontend when the user clicks Save?*
+
+The click doesn't mean the order was saved. Validation or the DB can still fail, retries can double-count, and client events get lost. Emit from the backend after the commit; keep frontend events for UI behaviour.
 
 ### 4b. Contract first, infrastructure later (data contracts)
 
@@ -131,7 +141,9 @@ This telemetry will later feed the network operations dashboard, Dr. Okonkwo's
 monthly executive report, and Claire's compliance alerts.
 ```
 
-**Interview Q:** *Why design the contract before choosing the pipeline?* The contract is the expensive part to change: once many producers emit events and many consumers read them, renaming a field breaks everyone. Infrastructure can be swapped behind a stable contract. Building pipelines for consumers that don't exist yet is premature (YAGNI) and adds cost with no decision behind it.
+**Interview Q:** *Why design the contract before choosing the pipeline?*
+
+The contract is the expensive part to change: once many producers emit events and many consumers read them, renaming a field breaks everyone. Infrastructure can be swapped behind a stable contract. Building pipelines for consumers that don't exist yet is premature (YAGNI) and adds cost with no decision behind it.
 
 ### 4c. Emit business events after the commit, not on submit
 
@@ -146,7 +158,9 @@ Failures get their **own** event instead (here `order_validation_failed`), so no
   orders are not counted.
 ```
 
-**Interview Q:** *The DB commit succeeds but the event send fails (or the reverse). How do you keep them consistent?* Use the **transactional outbox** pattern: write the event to an `outbox` table in the same transaction as the business data, and have a separate relay publish it afterwards. Combined with a unique `eventId`, consumers can deduplicate any retries (at-least-once delivery).
+**Interview Q:** *The DB commit succeeds but the event send fails (or the reverse). How do you keep them consistent?*
+
+Use the **transactional outbox** pattern: write the event to an `outbox` table in the same transaction as the business data, and have a separate relay publish it afterwards. Combined with a unique `eventId`, consumers can deduplicate any retries (at-least-once delivery).
 
 ### 4d. Edge-triggered vs level-triggered alerts
 
@@ -163,7 +177,9 @@ Example: stock 3, minimum 10, five more single-item orders. Level-triggered = 5 
 - **System touchpoint:** ... (`previous_stock >= min_threshold` and `current_stock < min_threshold`).
 ```
 
-**Interview Q:** *Why does this matter for alerting?* Level-triggered alerts on a persistent condition cause alert fatigue, so people start ignoring them. Edge-triggered gives one actionable alert per incident. It needs the previous state (before/after values), and you usually add a debounce for values flickering around the threshold.
+**Interview Q:** *Why does this matter for alerting?*
+
+Level-triggered alerts on a persistent condition cause alert fatigue, so people start ignoring them. Edge-triggered gives one actionable alert per incident. It needs the previous state (before/after values), and you usually add a debounce for values flickering around the threshold.
 
 ---
 
@@ -187,25 +203,33 @@ A fixed set of fields that **every** event carries, regardless of type. Event-sp
 | `properties`    | object            | yes      | Event-specific payload (allowlist only) |
 ```
 
-**Interview Q:** *Why a common envelope?* The pipeline can route, deduplicate, validate, and join every event the same way, without knowing each event's type. Only `properties` varies.
+**Interview Q:** *Why a common envelope?*
+
+The pipeline can route, deduplicate, validate, and join every event the same way, without knowing each event's type. Only `properties` varies.
 
 ### 6. Idempotency and deduplication with `eventId`
 
 Networks retry, so the same event can arrive twice. A unique `eventId` (UUID generated at the source) lets the consumer drop duplicates.
 
-**Interview Q:** *What does "at-least-once delivery" mean for telemetry?* Most pipelines guarantee at-least-once, not exactly-once, so duplicates will happen. Generate the ID on the client and deduplicate on `eventId` downstream to get effectively-once results.
+**Interview Q:** *What does "at-least-once delivery" mean for telemetry?*
+
+Most pipelines guarantee at-least-once, not exactly-once, so duplicates will happen. Generate the ID on the client and deduplicate on `eventId` downstream to get effectively-once results.
 
 ### 7. Correlation with `requestId`
 
 One ID passed through frontend → API → logs, so you can join everything that happened during one request.
 
-**Interview Q:** *A user reports a slow order save. How do you trace it?* Find the `requestId` on the frontend event, then follow it to the API latency event and the server logs for that same request.
+**Interview Q:** *A user reports a slow order save. How do you trace it?*
+
+Find the `requestId` on the frontend event, then follow it to the API latency event and the server logs for that same request.
 
 ### 8. Schema versioning with `schemaVersion`
 
 Events change over time. A version (semver, e.g. `1.0.0`) on each event lets consumers parse old and new payloads correctly.
 
-**Interview Q:** *How do you change an event without breaking consumers?* Adding an optional field is a minor bump. Removing or renaming a field, or changing its type, is a major bump. Consumers branch on `schemaVersion`.
+**Interview Q:** *How do you change an event without breaking consumers?*
+
+Adding an optional field is a minor bump. Removing or renaming a field, or changing its type, is a major bump. Consumers branch on `schemaVersion`.
 
 ### 9. `entity_action` naming taxonomy
 
@@ -217,7 +241,9 @@ inbound_order_created, stock_threshold_triggered, direct_stock_edit_rejected,
 login_failed, session_expired, section_viewed
 ```
 
-**Interview Q:** *Why does naming matter?* Without a convention you end up with `OrderCreated`, `order-create`, and `new_order` all meaning the same thing. Analysts can't find events, and dashboards silently miss data.
+**Interview Q:** *Why does naming matter?*
+
+Without a convention you end up with `OrderCreated`, `order-create`, and `new_order` all meaning the same thing. Analysts can't find events, and dashboards silently miss data.
 
 ### 10. Property allowlist
 
@@ -232,7 +258,9 @@ An explicit list of keys allowed in `properties`. Anything not on the list is dr
 | `quantity`   | integer | yes      | yes       | no  |
 ```
 
-**Interview Q:** *Allowlist vs blocklist for sensitive data?* A blocklist ("never send `patient_name`") fails open: any new field you didn't think of leaks. An allowlist fails closed: only known-safe fields get through.
+**Interview Q:** *Allowlist vs blocklist for sensitive data?*
+
+A blocklist ("never send `patient_name`") fails open: any new field you didn't think of leaks. An allowlist fails closed: only known-safe fields get through.
 
 ---
 
@@ -242,7 +270,9 @@ An explicit list of keys allowed in `properties`. Anything not on the list is dr
 
 A JSON document that describes the shape of other JSON: types, required fields, allowed values. Pipelines and SDKs use it to validate events.
 
-**Interview Q:** *Where would you validate events against the schema?* At the producer in dev/CI (to catch bugs early) and at pipeline ingestion (to reject or quarantine bad events before they hit the warehouse).
+**Interview Q:** *Where would you validate events against the schema?*
+
+At the producer in dev/CI (to catch bugs early) and at pipeline ingestion (to reject or quarantine bad events before they hit the warehouse).
 
 ### 12. `allOf` + `$ref`: reusing the envelope
 
@@ -255,7 +285,9 @@ Define the envelope once, then compose each event from it.
   `properties` with `required` list and `"additionalProperties": false`
 ```
 
-**Interview Q:** *What does `allOf` mean?* The data must be valid against **every** listed subschema. Envelope + event-specific rules = one event.
+**Interview Q:** *What does `allOf` mean?*
+
+The data must be valid against **every** listed subschema. Envelope + event-specific rules = one event.
 
 ### 13. `const` and `additionalProperties: false`
 
@@ -275,13 +307,17 @@ Define the envelope once, then compose each event from it.
 }
 ```
 
-**Interview Q:** *What's a gotcha with `additionalProperties: false` and `allOf`?* Each subschema only knows its own `properties`, so putting `additionalProperties: false` on the envelope can reject fields declared in the other branch. Apply it where the full set of keys is known (e.g. inside the `properties` object of each event).
+**Interview Q:** *What's a gotcha with `additionalProperties: false` and `allOf`?*
+
+Each subschema only knows its own `properties`, so putting `additionalProperties: false` on the envelope can reject fields declared in the other branch. Apply it where the full set of keys is known (e.g. inside the `properties` object of each event).
 
 ### 14. Keeping the docs and the schema in sync
 
 The Markdown plan and the JSON schema describe the same events, so they must match: names, properties, required flags.
 
-**Interview Q:** *How do you stop docs and schema drifting apart?* Treat one as the source of truth and generate or check the other in CI. At minimum, review them side by side event by event before merging.
+**Interview Q:** *How do you stop docs and schema drifting apart?*
+
+Treat one as the source of truth and generate or check the other in CI. At minimum, review them side by side event by event before merging.
 
 ---
 
@@ -301,7 +337,9 @@ The Markdown plan and the JSON schema describe the same events, so they must mat
 | Analytics only              | batch      | section popularity trends                    |
 ```
 
-**Interview Q:** *Why not stream everything?* Streaming costs more to build, run, and keep on call. Choose it only when the business decision is time-critical. Base the choice on business urgency, not on what's technically nice.
+**Interview Q:** *Why not stream everything?*
+
+Streaming costs more to build, run, and keep on call. Choose it only when the business decision is time-critical. Base the choice on business urgency, not on what's technically nice.
 
 ### 16. Throttle vs debounce for high-frequency events
 
@@ -309,7 +347,9 @@ The Markdown plan and the JSON schema describe the same events, so they must mat
 - **Throttle**: emit at most once per time window, no matter how many triggers happen.
 - **Sampling**: keep only a percentage (common for latency events).
 
-**Interview Q:** *A stock level hovers around the threshold and fires 200 alerts an hour. What do you do?* Debounce per `(clinic_id, product_id)` with a time window, so ops gets one actionable alert instead of alert fatigue.
+**Interview Q:** *A stock level hovers around the threshold and fires 200 alerts an hour. What do you do?*
+
+Debounce per `(clinic_id, product_id)` with a time window, so ops gets one actionable alert instead of alert fatigue.
 
 ---
 
@@ -329,7 +369,9 @@ The Markdown plan and the JSON schema describe the same events, so they must mat
 - For clinical context, use only `department` or service type (e.g. `chronic_care`).
 ```
 
-**Interview Q:** *How do you keep clinical context without PHI?* Aggregate to a non-identifying level: department or service type instead of patient. Consumption is tracked "by department, not by patient".
+**Interview Q:** *How do you keep clinical context without PHI?*
+
+Aggregate to a non-identifying level: department or service type instead of patient. Consumption is tracked "by department, not by patient".
 
 ### 18. Data minimisation, anonymisation, and pseudonymisation
 
@@ -337,13 +379,17 @@ The Markdown plan and the JSON schema describe the same events, so they must mat
 - **Anonymisation**: data can no longer be linked to a person at all.
 - **Pseudonymisation**: replace the identifier with a token or hash (e.g. a hashed `userId`). It's still personal data under GDPR because it can be re-linked.
 
-**Interview Q:** *Is hashing a user ID anonymisation?* No, it's pseudonymisation. A plain hash of a known ID can be reversed by hashing every candidate ID. Use a keyed hash (HMAC) with a secret salt, and still treat the result as personal data.
+**Interview Q:** *Is hashing a user ID anonymisation?*
+
+No, it's pseudonymisation. A plain hash of a known ID can be reversed by hashing every candidate ID. Use a keyed hash (HMAC) with a secret salt, and still treat the result as personal data.
 
 ### 19. Risks and exclusions: deliberate scope cuts
 
 A documented list of events you considered and dropped, plus data you will never capture (PHI, raw passwords, tokens), each with a reason.
 
-**Interview Q:** *Why write down what you're NOT tracking?* It shows the scope was a choice, not an oversight. It stops someone from adding a risky field later, and it gives reviewers and auditors a clear record.
+**Interview Q:** *Why write down what you're NOT tracking?*
+
+It shows the scope was a choice, not an oversight. It stops someone from adding a risky field later, and it gives reviewers and auditors a clear record.
 
 ### 20. Closed enums instead of free text to block PHI
 
@@ -354,7 +400,9 @@ A field that carries context (like `department`) is a closed `enum`, not a free-
 "department": { "type": "string", "enum": ["primary_care", "specialty_care", "chronic_care"] }
 ```
 
-**Interview Q:** *How do you stop sensitive data leaking through a "harmless" context field?* Constrain it to a closed enum (plus `additionalProperties: false` for unknown keys), so the schema rejects anything outside the approved values instead of relying on people being careful.
+**Interview Q:** *How do you stop sensitive data leaking through a "harmless" context field?*
+
+Constrain it to a closed enum (plus `additionalProperties: false` for unknown keys), so the schema rejects anything outside the approved values instead of relying on people being careful.
 
 ### 21. Limit the alerts, not the events (and sample uniformly)
 
@@ -365,7 +413,9 @@ For security events (`login_failed`, `direct_stock_edit_rejected`), every event 
 - **Alert limit:** at most one alert per account every 15 minutes.
 ```
 
-**Interview Q:** *Why not just sample or debounce failed logins like latency events?* Dropping security events destroys the audit trail and can hide a slow attack. Keep every event and throttle only the notifications. Sampling is fine for latency because the decision uses distributions (p95), which a uniform sample preserves. Sampling only slow requests would bias them.
+**Interview Q:** *Why not just sample or debounce failed logins like latency events?*
+
+Dropping security events destroys the audit trail and can hide a slow attack. Keep every event and throttle only the notifications. Sampling is fine for latency because the decision uses distributions (p95), which a uniform sample preserves. Sampling only slow requests would bias them.
 
 ### 22. Testing a schema: a valid example and a negative test
 
@@ -377,4 +427,6 @@ bad = copy.deepcopy(example_event); bad["properties"]["patient_name"] = "x"
 assert not jsonschema.Draft7Validator(schema).is_valid(bad)       # must fail
 ```
 
-**Interview Q:** *How do you know your telemetry schema really blocks PHI?* Write a negative test: an event with an extra field like `patient_name` must be rejected. Also check that the docs and the schema list the same events, properties and required flags, so they can't drift apart.
+**Interview Q:** *How do you know your telemetry schema really blocks PHI?*
+
+Write a negative test: an event with an extra field like `patient_name` must be rejected. Also check that the docs and the schema list the same events, properties and required flags, so they can't drift apart.

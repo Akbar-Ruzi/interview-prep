@@ -44,7 +44,9 @@ const hashedPassword = await bcrypt.hash(password, 12);
 const isPasswordValid = await bcrypt.compare(password, user.password);
 ```
 
-**Interview Q:** *How should passwords be stored?* Never as plain text. Store a salted hash from a slow algorithm designed for passwords, such as bcrypt or Argon2, and verify logins with its compare function.
+**Interview Q:** *How should passwords be stored?*
+
+Never as plain text. Store a salted hash from a slow algorithm designed for passwords, such as bcrypt or Argon2, and verify logins with its compare function.
 
 ### 2. Credentials sign-in with `authorize`
 
@@ -153,15 +155,25 @@ if (!isPasswordValid) return null;
 return { id: user._id.toString(), name: user.name, email: user.email, role: user.role };
 ```
 
-**Interview Q:** *Why not tell users which part of the login was wrong?* It would let attackers discover which emails are registered, and then target those accounts.
+**Interview Q:** *Why not tell users which part of the login was wrong?*
 
-**Interview Q:** *How does the App Router decide what becomes a URL?* Folders inside `app/` form the path, but a route only exists when the folder has a `page.tsx` or a `route.ts`. Other files in those folders, and anything outside `app/`, get no URL.
+It would let attackers discover which emails are registered, and then target those accounts.
 
-**Interview Q:** *What's the difference between `page.tsx` and `route.ts`?* `page.tsx` renders UI for a visitor. `route.ts` handles HTTP methods and returns a response, such as JSON. One folder can't have both, because they'd claim the same URL.
+**Interview Q:** *How does the App Router decide what becomes a URL?*
 
-**Interview Q:** *Why is the Auth.js config outside `app/`?* It's shared server code, not a route. Pages and API routes both import it, so the authentication rules live in one place.
+Folders inside `app/` form the path, but a route only exists when the folder has a `page.tsx` or a `route.ts`. Other files in those folders, and anything outside `app/`, get no URL.
 
-**Interview Q:** *What does `[...nextauth]` mean?* It's a catch-all segment that matches any number of path parts after `/api/auth/`, so one file can serve all of Auth.js's endpoints. A more specific route, like `/api/auth/signup`, takes priority.
+**Interview Q:** *What's the difference between `page.tsx` and `route.ts`?*
+
+`page.tsx` renders UI for a visitor. `route.ts` handles HTTP methods and returns a response, such as JSON. One folder can't have both, because they'd claim the same URL.
+
+**Interview Q:** *Why is the Auth.js config outside `app/`?*
+
+It's shared server code, not a route. Pages and API routes both import it, so the authentication rules live in one place.
+
+**Interview Q:** *What does `[...nextauth]` mean?*
+
+It's a catch-all segment that matches any number of path parts after `/api/auth/`, so one file can serve all of Auth.js's endpoints. A more specific route, like `/api/auth/signup`, takes priority.
 
 ### 3. JWT sessions: passing `id` and `role` through callbacks
 
@@ -225,17 +237,29 @@ authorize() → user → jwt() → token (cookie) → session() → auth() in th
 
 The cookie is encrypted, so the browser can't read or change the role inside it. Anyone holding `AUTH_SECRET` could create a valid session, so it has to stay private.
 
-**Interview Q:** *What's the main downside of JWT sessions?* You can't easily revoke one before it expires, and data inside it, like a role, can go stale. Sensitive actions may need a fresh database check.
+**Interview Q:** *What's the main downside of JWT sessions?*
 
-**Interview Q:** *What's the difference between `user`, `token` and `session` in Auth.js?* `user` exists only at sign-in and comes from `authorize`. `token` is what's stored in the cookie and persists between requests. `session` is the object your app reads, built from the token.
+You can't easily revoke one before it expires, and data inside it, like a role, can go stale. Sensitive actions may need a fresh database check.
 
-**Interview Q:** *Why does the `jwt` callback check `if (user)`?* `user` is only passed at sign-in. On later calls it's `undefined`, so without the check the code would crash or overwrite the token's values.
+**Interview Q:** *What's the difference between `user`, `token` and `session` in Auth.js?*
 
-**Interview Q:** *Why doesn't `session.user.role` exist without the `session` callback?* Auth.js only exposes a few default fields. Custom values in the token have to be copied onto the session deliberately, which also stops private token data reaching the app by accident.
+`user` exists only at sign-in and comes from `authorize`. `token` is what's stored in the cookie and persists between requests. `session` is the object your app reads, built from the token.
 
-**Interview Q:** *What happens if you delete a user who is signed in with a JWT session?* They stay signed in until the token expires, because nothing checks the database. To cut them off sooner, check the database on sensitive actions or use database sessions.
+**Interview Q:** *Why does the `jwt` callback check `if (user)`?*
 
-**Interview Q:** *Which `signIn` do you use in a client component?* The one from `next-auth/react`. The one exported from the `NextAuth()` config is for server code.
+`user` is only passed at sign-in. On later calls it's `undefined`, so without the check the code would crash or overwrite the token's values.
+
+**Interview Q:** *Why doesn't `session.user.role` exist without the `session` callback?*
+
+Auth.js only exposes a few default fields. Custom values in the token have to be copied onto the session deliberately, which also stops private token data reaching the app by accident.
+
+**Interview Q:** *What happens if you delete a user who is signed in with a JWT session?*
+
+They stay signed in until the token expires, because nothing checks the database. To cut them off sooner, check the database on sensitive actions or use database sessions.
+
+**Interview Q:** *Which `signIn` do you use in a client component?*
+
+The one from `next-auth/react`. The one exported from the `NextAuth()` config is for server code.
 
 ### 4. Module augmentation: typing the session
 
@@ -255,7 +279,9 @@ declare module 'next-auth' {
 }
 ```
 
-**Interview Q:** *How do you add a property to a third-party library's types?* Use `declare module` to extend its interface. Interfaces with the same name merge, which is one reason libraries expose interfaces for this.
+**Interview Q:** *How do you add a property to a third-party library's types?*
+
+Use `declare module` to extend its interface. Interfaces with the same name merge, which is one reason libraries expose interfaces for this.
 
 ### 5. Authentication vs authorization (401 vs 403)
 
@@ -304,7 +330,9 @@ async function getAuthorizedEvent(params: Promise<{ slug: string }>): Promise<Au
 }
 ```
 
-**Interview Q:** *What's the difference between 401 and 403?* 401 means the user isn't authenticated, so signing in might help. 403 means they're known but don't have permission.
+**Interview Q:** *What's the difference between 401 and 403?*
+
+401 means the user isn't authenticated, so signing in might help. 403 means they're known but don't have permission.
 
 ### 6. Mass assignment: never trust the request body
 
@@ -335,7 +363,9 @@ Create does this correctly, because the owner comes from the session rather than
 const eventPayload = { ...eventFields, image: uploadResult.secure_url, createdBy: userId };
 ```
 
-**Interview Q:** *What is a mass assignment vulnerability?* The server copies client input directly onto a model, so an attacker can set fields they shouldn't, such as `role` or an owner id. Prevent it with an allowlist of fields.
+**Interview Q:** *What is a mass assignment vulnerability?*
+
+The server copies client input directly onto a model, so an attacker can set fields they shouldn't, such as `role` or an owner id. Prevent it with an allowlist of fields.
 
 ### 7. The sign-in form: `useAuthForm`, `signIn` and what happens after
 
@@ -475,29 +505,53 @@ if (result.error) {
 
 I confirmed this by forcing each failure in a browser: a dropped request, a non-JSON reply, then a retry that succeeded.
 
-**Interview Q:** *Why use `redirect: false` with `signIn`?* By default it navigates after the attempt. With `false` you get the result back, so you can show an error on the same page and choose where to go on success.
+**Interview Q:** *Why use `redirect: false` with `signIn`?*
 
-**Interview Q:** *Why call `router.refresh()` after signing in?* Layouts keep their rendered output across client navigations, so a Server Component like the navbar would still show the signed-out state. `refresh` fetches fresh Server Component output without losing client state.
+By default it navigates after the attempt. With `false` you get the result back, so you can show an error on the same page and choose where to go on success.
 
-**Interview Q:** *Does `fetch` throw on a 500 response?* No. It only rejects when the request can't complete, such as a network failure. HTTP errors resolve normally, so check `res.ok`.
+**Interview Q:** *Why call `router.refresh()` after signing in?*
 
-**Interview Q:** *Why show one message for a wrong email or a wrong password?* Different messages would let someone test which emails are registered, which is called user enumeration.
+Layouts keep their rendered output across client navigations, so a Server Component like the navbar would still show the signed-out state. `refresh` fetches fresh Server Component output without losing client state.
 
-**Interview Q:** *Controlled vs uncontrolled inputs?* A controlled input keeps its value in React state and re-renders on each keystroke, which suits live validation. An uncontrolled input keeps its value in the DOM and you read it when needed, which is simpler for a form that's only read on submit.
+**Interview Q:** *Does `fetch` throw on a 500 response?*
 
-**Interview Q:** *Where should you turn off a loading state after a request?* In `finally`, so it runs after both success and failure.
+No. It only rejects when the request can't complete, such as a network failure. HTTP errors resolve normally, so check `res.ok`.
 
-**Interview Q:** *What happens if an `await` throws and there's no `try/catch`?* The function stops at that line and returns a rejected promise. Nothing after it runs, so cleanup like turning off a loading state is skipped and the interface can stay stuck.
+**Interview Q:** *Why show one message for a wrong email or a wrong password?*
 
-**Interview Q:** *Does `finally` run if the `try` block returns?* Yes. It runs after `return`, after a thrown error, and after normal completion, which makes it the right place for cleanup.
+Different messages would let someone test which emails are registered, which is called user enumeration.
 
-**Interview Q:** *Will a React error boundary catch an error from an async submit handler?* No. Error boundaries catch errors thrown while rendering. Errors in event handlers and async code have to be caught in that code.
+**Interview Q:** *Controlled vs uncontrolled inputs?*
 
-**Interview Q:** *Can `try/catch` catch every failure from a library call?* Only errors the library actually throws. If it swallows an error and returns nothing or navigates away, you have to check the return value too.
+A controlled input keeps its value in React state and re-renders on each keystroke, which suits live validation. An uncontrolled input keeps its value in the DOM and you read it when needed, which is simpler for a form that's only read on submit.
 
-**Interview Q:** *Why not show `error.message` to the user?* It's written for developers and can reveal internal details. Log it, and show a message the user can act on.
+**Interview Q:** *Where should you turn off a loading state after a request?*
 
-**Interview Q:** *Is `disabled={isSubmitting}` enough to prevent duplicate submissions?* It's a good interface guard, but it doesn't protect the server. Duplicates can still arrive from other sources, so uniqueness has to be enforced there too, such as with a unique index.
+In `finally`, so it runs after both success and failure.
+
+**Interview Q:** *What happens if an `await` throws and there's no `try/catch`?*
+
+The function stops at that line and returns a rejected promise. Nothing after it runs, so cleanup like turning off a loading state is skipped and the interface can stay stuck.
+
+**Interview Q:** *Does `finally` run if the `try` block returns?*
+
+Yes. It runs after `return`, after a thrown error, and after normal completion, which makes it the right place for cleanup.
+
+**Interview Q:** *Will a React error boundary catch an error from an async submit handler?*
+
+No. Error boundaries catch errors thrown while rendering. Errors in event handlers and async code have to be caught in that code.
+
+**Interview Q:** *Can `try/catch` catch every failure from a library call?*
+
+Only errors the library actually throws. If it swallows an error and returns nothing or navigates away, you have to check the return value too.
+
+**Interview Q:** *Why not show `error.message` to the user?*
+
+It's written for developers and can reveal internal details. Log it, and show a message the user can act on.
+
+**Interview Q:** *Is `disabled={isSubmitting}` enough to prevent duplicate submissions?*
+
+It's a good interface guard, but it doesn't protect the server. Duplicates can still arrive from other sources, so uniqueness has to be enforced there too, such as with a unique index.
 
 ---
 
@@ -532,4 +586,6 @@ I asked how a guest could see their booking later. It seems natural to show it o
 
 **The trade-off:** a guest can't cancel, so their booking counts toward the email's limit until the event ends. I accepted that to ship the first prototype sooner.
 
-**Interview Q:** *A user signs up with an email that already has guest orders. Should you link them automatically?* Only after verifying the email. Otherwise, signing up with someone else's address gives access to their data.
+**Interview Q:** *A user signs up with an email that already has guest orders. Should you link them automatically?*
+
+Only after verifying the email. Otherwise, signing up with someone else's address gives access to their data.

@@ -48,7 +48,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) { /*
 | 409 | Conflict | Email or title already exists |
 | 500 | Server error | Unexpected failures |
 
-**Interview Q:** *What's the difference between PUT and PATCH?* PUT replaces the whole resource, while PATCH changes only the fields you send.
+**Interview Q:** *What's the difference between PUT and PATCH?*
+
+PUT replaces the whole resource, while PATCH changes only the fields you send.
 
 ### 2. Server Actions and returning a result object
 
@@ -81,7 +83,9 @@ if (result.success) {
 }
 ```
 
-**Interview Q:** *Server Action or Route Handler?* Server Actions suit mutations from your own UI. Route Handlers suit endpoints that outside clients, webhooks or other apps need to call.
+**Interview Q:** *Server Action or Route Handler?*
+
+Server Actions suit mutations from your own UI. Route Handlers suit endpoints that outside clients, webhooks or other apps need to call.
 
 ### 3. Uploading a file: wrapping a callback API in a Promise
 
@@ -116,7 +120,9 @@ const uploadResult = await new Promise<CloudinaryUploadResult>((resolve, reject)
 });
 ```
 
-**Interview Q:** *How do you turn a callback API into a Promise?* Wrap it in `new Promise`, call `reject` on an error and `resolve` on success. `util.promisify` does this for standard Node-style callbacks.
+**Interview Q:** *How do you turn a callback API into a Promise?*
+
+Wrap it in `new Promise`, call `reject` on an error and `resolve` on success. `util.promisify` does this for standard Node-style callbacks.
 
 ### 4. Constants in a `'use server'` file
 
@@ -133,9 +139,13 @@ const PHONE_REGEX = /^\+?[\d\s().-]+$/;
 
 They can't be exported from this file, because a `'use server'` file can only export async functions. **Planned fix:** when the new booking form needs the same rules, move them into a small shared file that both the form and the server import.
 
-**Interview Q:** *Why can a `'use server'` file only export async functions?* Each export becomes a function the browser can call over the network, and a network call is always asynchronous. A plain value like a number or regex can't be called that way.
+**Interview Q:** *Why can a `'use server'` file only export async functions?*
 
-**Interview Q:** *Why validate on both the client and the server?* Client validation gives fast feedback, but it's only for convenience, because anyone can skip it and call the server directly. Server validation is what actually protects the data.
+Each export becomes a function the browser can call over the network, and a network call is always asynchronous. A plain value like a number or regex can't be called that way.
+
+**Interview Q:** *Why validate on both the client and the server?*
+
+Client validation gives fast feedback, but it's only for convenience, because anyone can skip it and call the server directly. Server validation is what actually protects the data.
 
 ### 5. Reading a request body: `await req.json()` and `as`
 
@@ -174,9 +184,13 @@ const email = body.email?.trim().toLowerCase() ?? "";
 const password = body.password ?? "";
 ```
 
-**Interview Q:** *Does `as SignupBody` validate the request body?* No. It only changes what TypeScript believes about the value, and it's gone from the compiled JavaScript. Data from a request must be validated at runtime.
+**Interview Q:** *Does `as SignupBody` validate the request body?*
 
-**Interview Q:** *What's the difference between `as` and a type annotation?* An annotation, such as `const body: SignupBody = value`, makes the compiler check that the value matches the type. `as` tells the compiler to trust you, so a wrong assertion can hide a real bug. `req.json()` returns `Promise<any>`, so an annotation wouldn't check anything here either.
+No. It only changes what TypeScript believes about the value, and it's gone from the compiled JavaScript. Data from a request must be validated at runtime.
+
+**Interview Q:** *What's the difference between `as` and a type annotation?*
+
+An annotation, such as `const body: SignupBody = value`, makes the compiler check that the value matches the type. `as` tells the compiler to trust you, so a wrong assertion can hide a real bug. `req.json()` returns `Promise<any>`, so an annotation wouldn't check anything here either.
 
 ### 6. A full route, step by step: sign-up
 
@@ -354,11 +368,17 @@ return NextResponse.json(
 );
 ```
 
-**Interview Q:** *How does Next.js know a file is an API endpoint?* From the file name. `route.ts` inside `app/` handles requests at the URL made from its folder path, and each exported function named after an HTTP method, such as `POST`, handles that method. A method with no export gets a 405.
+**Interview Q:** *How does Next.js know a file is an API endpoint?*
 
-**Interview Q:** *Why don't you return the created user directly from `User.create`?* It includes the password hash and internal fields. Listing the fields you want means a new sensitive field on the model can't leak by accident.
+From the file name. `route.ts` inside `app/` handles requests at the URL made from its folder path, and each exported function named after an HTTP method, such as `POST`, handles that method. A method with no export gets a 405.
 
-**Interview Q:** *Why hard-code `role: 'user'` instead of reading it from the body?* Clients control the request body, so accepting a role would let anyone make themselves an admin. This is called a mass assignment vulnerability.
+**Interview Q:** *Why don't you return the created user directly from `User.create`?*
+
+It includes the password hash and internal fields. Listing the fields you want means a new sensitive field on the model can't leak by accident.
+
+**Interview Q:** *Why hard-code `role: 'user'` instead of reading it from the body?*
+
+Clients control the request body, so accepting a role would let anyone make themselves an admin. This is called a mass assignment vulnerability.
 
 ### 7. `import "server-only"` and the data access layer
 
@@ -401,13 +421,21 @@ return <EventContent event={event} />;
 
 **What it doesn't do.** It's a build-time check on imports. It isn't authentication or authorization, so permission checks are still needed.
 
-**Interview Q:** *What does `import "server-only"` do?* It makes the build fail if the module ends up in client code. It's used on files that touch the database, secrets or the file system.
+**Interview Q:** *What does `import "server-only"` do?*
 
-**Interview Q:** *`server-only` vs `"use server"`?* `server-only` keeps a module away from the client and exposes nothing. `"use server"` does the opposite kind of job: it exposes functions so the client can call them over the network.
+It makes the build fail if the module ends up in client code. It's used on files that touch the database, secrets or the file system.
 
-**Interview Q:** *Why not fetch your own API route from a Server Component?* The Server Component is already on the server, so calling a Route Handler adds a pointless network round trip and needs an absolute URL. Calling the data function directly is faster and fully typed.
+**Interview Q:** *`server-only` vs `"use server"`?*
 
-**Interview Q:** *Can a Client Component get data from a `server-only` module?* Not by importing it. A Server Component can load the data and pass it as props, or the client can call a Route Handler.
+`server-only` keeps a module away from the client and exposes nothing. `"use server"` does the opposite kind of job: it exposes functions so the client can call them over the network.
+
+**Interview Q:** *Why not fetch your own API route from a Server Component?*
+
+The Server Component is already on the server, so calling a Route Handler adds a pointless network round trip and needs an absolute URL. Calling the data function directly is faster and fully typed.
+
+**Interview Q:** *Can a Client Component get data from a `server-only` module?*
+
+Not by importing it. A Server Component can load the data and pass it as props, or the client can call a Route Handler.
 
 ### 8. Loading page data: failure handling per call, `notFound()` and why reads aren't Server Actions
 
@@ -456,15 +484,25 @@ A Server Action is a public endpoint, and it's designed for changing data. Frame
 | Change data from a form or button | A Server Action, with validation and permission checks |
 | Serve other clients, or fetch from the browser | A Route Handler |
 
-**Interview Q:** *Should a page treat every data failure the same way?* No. Decide per call. If the page can't exist without the data, show a not-found or error state. If the data is optional, use a fallback and log the error so one failed section doesn't take down the page.
+**Interview Q:** *Should a page treat every data failure the same way?*
 
-**Interview Q:** *Why shouldn't you call `notFound()` or `redirect()` inside a `try/catch`?* They work by throwing. A general `catch` can intercept that error, so the navigation never happens. Call them outside the `try`, or rethrow.
+No. Decide per call. If the page can't exist without the data, show a not-found or error state. If the data is optional, use a fallback and log the error so one failed section doesn't take down the page.
 
-**Interview Q:** *What's the type of `error` in `.catch()` compared to a `catch` block?* In `.catch()` it's `any`. In a `catch` block under strict TypeScript it's `unknown`, which forces you to check it first.
+**Interview Q:** *Why shouldn't you call `notFound()` or `redirect()` inside a `try/catch`?*
 
-**Interview Q:** *Why not load both with `Promise.all`?* It would be faster for a valid event, because the queries run at the same time. Running them in order avoids a wasted similar-events query when the event doesn't exist. Use `Promise.all` when the calls don't depend on each other and the extra work is acceptable.
+They work by throwing. A general `catch` can intercept that error, so the navigation never happens. Call them outside the `try`, or rethrow.
 
-**Interview Q:** *When would you use a Server Action, and when a data function?* Use a Server Action for changes triggered by the user. Use a data function for reading data during server rendering.
+**Interview Q:** *What's the type of `error` in `.catch()` compared to a `catch` block?*
+
+In `.catch()` it's `any`. In a `catch` block under strict TypeScript it's `unknown`, which forces you to check it first.
+
+**Interview Q:** *Why not load both with `Promise.all`?*
+
+It would be faster for a valid event, because the queries run at the same time. Running them in order avoids a wasted similar-events query when the event doesn't exist. Use `Promise.all` when the calls don't depend on each other and the extra work is acceptable.
+
+**Interview Q:** *When would you use a Server Action, and when a data function?*
+
+Use a Server Action for changes triggered by the user. Use a data function for reading data during server rendering.
 
 ### 9. Three ways to reach the database: Route Handlers, Server Actions and data functions
 
@@ -518,10 +556,18 @@ The request left the server only to come back to the same server. It cost an ext
 
 **Why the browser can use `/api/events` but the server can't.** The browser resolves a relative path against the page it's on. A Server Component isn't on a page in that sense, so `fetch` on the server needs a full URL.
 
-**Interview Q:** *Server Action vs API route?* A Server Action suits changes from your own React forms and buttons: no URL to manage, and the types carry through. An API route suits anything that needs a real URL, such as a mobile app, a webhook or another service. Both are public endpoints, so both need validation and permission checks.
+**Interview Q:** *Server Action vs API route?*
 
-**Interview Q:** *Do Server Actions replace API routes?* No. A Server Action is tied to your React app, while an API route is a general HTTP endpoint that any client can call.
+A Server Action suits changes from your own React forms and buttons: no URL to manage, and the types carry through. An API route suits anything that needs a real URL, such as a mobile app, a webhook or another service. Both are public endpoints, so both need validation and permission checks.
 
-**Interview Q:** *Why not fetch your own API from a Server Component?* It adds a network round trip to the same server, needs an absolute URL and loses type safety. Put the query in a shared function, then have both the page and the route call it.
+**Interview Q:** *Do Server Actions replace API routes?*
 
-**Interview Q:** *Why does `fetch('/api/events')` work in the browser but not in a Server Component?* The browser can resolve a relative path against the current page's address. On the server there's no current page to resolve it against, so it needs an absolute URL.
+No. A Server Action is tied to your React app, while an API route is a general HTTP endpoint that any client can call.
+
+**Interview Q:** *Why not fetch your own API from a Server Component?*
+
+It adds a network round trip to the same server, needs an absolute URL and loses type safety. Put the query in a shared function, then have both the page and the route call it.
+
+**Interview Q:** *Why does `fetch('/api/events')` work in the browser but not in a Server Component?*
+
+The browser can resolve a relative path against the current page's address. On the server there's no current page to resolve it against, so it needs an absolute URL.
